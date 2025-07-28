@@ -7,6 +7,7 @@ Script principal pour nettoyer et importer les fichiers GeoNames
 import os
 import sys
 import csv
+import re
 import mysql.connector
 from pathlib import Path
 import argparse
@@ -400,8 +401,7 @@ class GeoDataImporter:
             self.stats['postal']['skipped'] = skipped
             
             # 4. Import GeoNames par pays (fichiers les plus gros)
-            country_files = [f for f in self.data_path.glob("*.txt") 
-                           if f.name.match(r'^[A-Z]{2}\.txt$')]
+            country_files = [f for f in self.data_path.glob("[A-Z][A-Z].txt")]
             
             total_geo_imported = 0
             total_geo_skipped = 0
