@@ -310,14 +310,14 @@ class GeoService:
         # Enrichir avec métadonnées
         for city in cities:
             city['source'] = 'geonames'
-            city['type'] = self._get_city_type(city['feature_code'])
+            city['type'] = self._get_city_type(city.get('feature_code', 'PPL'))
         
         return cities
     
     def _calculate_site_relevance(self, site: Dict, site_type: str) -> float:
         """Calculer un score de pertinence pour un site"""
         relevance = 1.0
-        distance_km = site.get('distance_km', 999)
+        distance_km = float(site.get('distance_km', 999))  # Convertir Decimal en float
         
         # Bonus selon le type de site
         if site_type == 'unesco':
