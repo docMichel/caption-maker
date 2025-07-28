@@ -1,0 +1,335 @@
+# 📍 src/config/ai_prompts.yaml
+#
+# Configuration centralisée des prompts et templates pour l'AIService
+# Permet l'ajustement facile des prompts sans recompilation
+# Version: 1.0
+
+# =============================================================================
+# CONFIGURATION MODELES OLLAMA
+# =============================================================================
+models:
+  vision: "llava:7b"
+  caption: "mistral:7b-instruct" 
+  geo_enrichment: "qwen2:7b"
+
+ollama:
+  base_url: "http://localhost:11434"
+  timeout: 60
+  default_temperature: 0.7
+  max_retries: 3
+
+# =============================================================================
+# TEMPLATES DE PROMPTS - ANALYSE D'IMAGE
+# =============================================================================
+image_analysis:
+  # Prompt principal pour LLaVA
+  main_prompt: |
+    Analyse cette image et décris ce que tu vois de manière précise et objective.
+
+    Focus sur:
+    - Les éléments principaux (personnes, objets, architecture, nature)
+    - L'ambiance et l'atmosphère générale
+    - Les couleurs dominantes et la luminosité
+    - Le style architectural ou artistique si identifiable
+    - L'activité ou la situation capturée
+    - Le moment de la journée approximatif
+
+    Sois concis mais informatif. Maximum 150 mots.
+    Évite les interprétations subjectives, reste factuel.
+
+  # Prompt pour analyse détaillée (si nécessaire)
+  detailed_prompt: |
+    Fais une analyse approfondie de cette image pour une légende Instagram.
+    
+    Décris:
+    1. COMPOSITION: Cadrage, perspective, points focaux
+    2. CONTENU: Éléments visuels principaux et secondaires  
+    3. AMBIANCE: Mood, émotion transmise, atmosphère
+    4. TECHNIQUE: Éclairage, couleurs, style photographique
+    5. CONTEXTE: Indices sur le lieu, l'époque, l'événement
+    
+    Format: Paragraphe fluide, pas de listes. Maximum 200 mots.
+
+  # Paramètres spécifiques LLaVA
+  parameters:
+    temperature: 0.6
+    max_tokens: 200
+    top_p: 0.9
+
+# =============================================================================
+# TEMPLATES DE LEGENDS - FRANÇAIS
+# =============================================================================
+captions_french:
+  # Style créatif/poétique
+  creative: |
+    Crée une légende Instagram poétique et authentique en français pour cette photo.
+
+    📸 DESCRIPTION DE L'IMAGE:
+    {image_description}
+
+    📍 CONTEXTE GÉOGRAPHIQUE:
+    - Lieu: {location_basic}
+    - Contexte culturel: {cultural_context}
+    - Attractions proches: {nearby_attractions}
+    - Enrichissement: {cultural_enrichment}
+
+    🎨 STYLE DEMANDÉ:
+    - Émotionnel et évocateur, capture l'essence du moment
+    - Authentique et personnel, pas de ton marketing
+    - Entre 80-120 mots maximum
+    - Ton inspirant qui donne envie de voyager
+    - AUCUN hashtag, aucun emoji dans le texte
+    - Une seule langue (français uniquement)
+
+    ✍️ CONSIGNES:
+    Écris une légende qui raconte une histoire, évoque une émotion et crée une connexion avec ce lieu unique. 
+    Utilise des métaphores subtiles et un vocabulaire riche mais accessible.
+
+  # Style descriptif
+  descriptive: |
+    Écris une légende Instagram descriptive en français pour cette photo.
+
+    📸 Description: {image_description}
+    📍 Lieu: {location_basic}
+    🏛️ Contexte: {cultural_context}
+
+    Style:
+    - Informatif mais engageant  
+    - 60-100 mots
+    - Ton naturel et accessible
+    - Focus sur les faits intéressants du lieu
+    - Pas de hashtags
+
+    Décris ce qu'on voit et où c'est, avec des détails captivants sur le lieu.
+
+  # Style minimaliste 
+  minimal: |
+    Crée une légende Instagram minimaliste en français.
+
+    Image: {image_description}
+    Lieu: {location_basic}
+
+    Style:
+    - Très court (30-50 mots maximum)
+    - Poétique et évocateur
+    - Une phrase percutante ou une réflexion courte
+    - Pas de hashtags
+
+    Capture l'essence en quelques mots seulement.
+
+# =============================================================================
+# TEMPLATES DE LEGENDS - ANGLAIS  
+# =============================================================================
+captions_english:
+  # Style créatif/poétique
+  creative: |
+    Create a poetic and authentic Instagram caption in English for this photo.
+
+    📸 IMAGE DESCRIPTION:
+    {image_description}
+
+    📍 GEOGRAPHIC CONTEXT:
+    - Location: {location_basic}
+    - Cultural context: {cultural_context}
+    - Nearby attractions: {nearby_attractions}
+    - Cultural enrichment: {cultural_enrichment}
+
+    🎨 STYLE REQUIREMENTS:
+    - Emotional and evocative, capturing the moment's essence
+    - Authentic and personal, not marketing-like
+    - 80-120 words maximum
+    - Inspiring tone that makes people want to travel
+    - NO hashtags, NO emojis in the text
+    - Single language (English only)
+
+    ✍️ GUIDELINES:
+    Write a caption that tells a story, evokes emotion, and creates connection with this unique place.
+    Use subtle metaphors and rich but accessible vocabulary.
+
+  # Style descriptif
+  descriptive: |
+    Write a descriptive Instagram caption in English for this photo.
+
+    📸 Description: {image_description}
+    📍 Location: {location_basic}  
+    🏛️ Context: {cultural_context}
+
+    Style:
+    - Informative but engaging
+    - 60-100 words
+    - Natural and accessible tone
+    - Focus on interesting facts about the place
+    - No hashtags
+
+    Describe what we see and where it is, with captivating details about the location.
+
+  # Style minimaliste
+  minimal: |
+    Create a minimalist Instagram caption in English.
+
+    Image: {image_description}
+    Location: {location_basic}
+
+    Style:
+    - Very short (30-50 words maximum)
+    - Poetic and evocative
+    - One powerful sentence or short reflection
+    - No hashtags
+
+    Capture the essence in just a few words.
+
+# =============================================================================
+# TEMPLATES BILINGUES
+# =============================================================================
+captions_bilingual:
+  creative: |
+    Crée une légende Instagram bilingue (français ET anglais) pour cette photo.
+
+    📸 Image: {image_description}
+    📍 Lieu: {location_basic}
+    🏛️ Contexte: {cultural_context}
+
+    Format OBLIGATOIRE:
+    🇫🇷 [Légende française poétique, 60-80 mots]
+    
+    🇬🇧 [English poetic caption, 60-80 words]
+
+    Style: Authentique, évocateur, pas de hashtags.
+    Les deux versions doivent avoir le même esprit mais pas être des traductions littérales.
+
+# =============================================================================
+# ENRICHISSEMENT CULTUREL
+# =============================================================================
+cultural_enrichment:
+  # Prompt principal pour Qwen2
+  main_prompt: |
+    Enrichis ce contexte géographique avec des informations culturelles et historiques pertinentes pour une légende Instagram.
+
+    📍 LIEU: {location_basic}
+    📚 CONTEXTE ACTUEL: {current_context}
+
+    🎯 AJOUTE DES DÉTAILS SUR:
+    - Histoire significative ou anecdotes du lieu
+    - Traditions locales importantes ou uniques  
+    - Caractéristiques géographiques remarquables
+    - Aspects culturels distinctifs
+    - Importance dans l'art, la littérature ou le cinéma
+
+    ✅ CONSIGNES:
+    - Reste factuel et vérifiable
+    - Maximum 80 mots
+    - Ton accessible, pas académique
+    - Information qui enrichit sans être pesante
+    - Évite les clichés touristiques
+
+  # Version courte pour contexte limité
+  short_prompt: |
+    Ajoute 1-2 faits culturels intéressants sur: {location_basic}
+    
+    Contexte existant: {current_context}
+    
+    Style: Factuel, concis (40 mots max), accessible.
+
+  # Paramètres Qwen2
+  parameters:
+    temperature: 0.5
+    max_tokens: 120
+    top_p: 0.8
+
+# =============================================================================
+# CONFIGURATION POST-PROCESSING
+# =============================================================================
+post_processing:
+  # Mots/phrases à nettoyer
+  remove_patterns:
+    - "^#.*$"  # Hashtags en début de ligne
+    - "\\*{2,}"  # Markdown bold/italic
+    - "_{2,}"   # Markdown underline
+    - "```.*?```"  # Code blocks
+    - "📍|🌍|🎨|✨|🏛️"  # Emojis courants (optionnel)
+
+  # Longueurs limites
+  max_caption_length: 500
+  min_caption_length: 20
+  max_sentences_if_too_long: 3
+
+  # Mots interdits (spam/marketing)
+  forbidden_words:
+    - "like and subscribe"
+    - "follow for more"
+    - "link in bio" 
+    - "swipe up"
+    - "click here"
+
+# =============================================================================
+# MESSAGES D'ERREUR ET FALLBACKS
+# =============================================================================
+fallback_messages:
+  french:
+    no_image: "Une belle image capturée à {location_basic}, où chaque moment raconte une histoire unique."
+    no_location: "Un instant magique figé dans le temps, porteur d'émotions et de souvenirs."
+    generic_error: "Une photo qui capture l'essence d'un moment précieux."
+    
+  english:
+    no_image: "A beautiful moment captured at {location_basic}, where every instant tells a unique story."
+    no_location: "A magical moment frozen in time, carrying emotions and memories."
+    generic_error: "A photo that captures the essence of a precious moment."
+
+# =============================================================================
+# SCORING ET QUALITÉ
+# =============================================================================
+quality_scoring:
+  # Poids pour calcul score de confiance
+  weights:
+    image_analysis: 0.3
+    geo_context: 0.4  
+    caption_quality: 0.3
+
+  # Critères qualité légende
+  caption_quality_factors:
+    min_words: 10
+    max_words: 150
+    ideal_words_min: 40
+    ideal_words_max: 120
+    bonus_for_metaphors: 0.1
+    penalty_hashtags: -0.2
+    penalty_emojis: -0.1
+
+# =============================================================================
+# CONFIGURATION DE DEBUG
+# =============================================================================
+debug:
+  log_prompts: false
+  log_responses: false  
+  save_failed_generations: true
+  detailed_timing: false
+
+# =============================================================================  
+# LANGUES SUPPORTÉES
+# =============================================================================
+supported_languages:
+  - code: "fr"
+    names: ["français", "french", "fr"]
+    template_key: "captions_french"
+    
+  - code: "en" 
+    names: ["english", "anglais", "en"]
+    template_key: "captions_english"
+    
+  - code: "bilingual"
+    names: ["bilingual", "bilingue", "multi"]
+    template_key: "captions_bilingual"
+
+# =============================================================================
+# STYLES SUPPORTÉS
+# =============================================================================
+supported_styles:
+  - name: "creative"
+    description: "Poétique et évocateur"
+    default: true
+    
+  - name: "descriptive" 
+    description: "Informatif et engageant"
+    
+  - name: "minimal"
+    description: "Court et percutant"
