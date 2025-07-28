@@ -45,6 +45,9 @@ class CaptionResult:
     geo_context: Dict[str, Any] 
     ai_models_used: List[str]
     
+    # Nouveaux contextes intermédiaires détaillés
+    intermediate_results: Dict[str, Any] = None
+    
     # Debug info
     processing_steps: List[str]
     prompts_used: Dict[str, str] = None
@@ -55,6 +58,8 @@ class CaptionResult:
             self.error_messages = []
         if self.prompts_used is None:
             self.prompts_used = {}
+        if self.intermediate_results is None:
+            self.intermediate_results = {}
 
 class AIService:
     """
@@ -149,27 +154,59 @@ class AIService:
             
             processing_steps.append("✅ Image validée")
             
+            # Structure pour stocker tous les résultats intermédiaires
+            intermediate_results = {
+                'image_analysis_raw': None,
+                'geo_location_raw': None,
+                'geo_summary_basic': None,
+                'cultural_enrichment_raw': None,
+                'final_context_for_ai': None,
+                'caption_raw': None
+            }
+            
             # 2. Analyse visuelle avec LLaVA
             logger.info("   🔍 Analyse visuelle...")
             image_analysis = self._analyze_image_with_llava(image_path, prompts_used)
+            intermediate_results['image_analysis_raw'] = {
+                'description': image_analysis['description'],
+                'confidence': image_analysis['confidence'],
+                'model_used': image_analysis['model_used']
+            }
             processing_steps.append("✅ Analyse visuelle terminée")
             
             # 3. Récupération contexte géographique
             logger.info("   🌍 Enrichissement géographique...")
             geo_location = self.geo_service.get_location_info(latitude, longitude)
             geo_summary = self.geo_service.get_location_summary_for_ai(geo_location)
+            
+            intermediate_results['geo_location_raw'] = geo_location.to_dict()
+            intermediate_results['geo_summary_basic'] = geo_summary.copy()
             processing_steps.append("✅ Contexte géographique récupéré")
             
             # 4. Enrichissement culturel avec Qwen2 (si pertinent)
             enriched_context = geo_summary.copy()
+            cultural_enrichment_text = None
+            
             if geo_location.confidence_score > 0.5 and geo_summary.get('cultural_context'):
                 logger.info("   📚 Enrichissement culturel...")
-                cultural_enrichment = self._enrich_cultural_context(geo_summary, prompts_used)
-                if cultural_enrichment:
-                    enriched_context['cultural_enrichment'] = cultural_enrichment
+                cultural_enrichment_text = self._enrich_cultural_context(geo_summary, prompts_used)
+                if cultural_enrichment_text:
+                    enriched_context['cultural_enrichment'] = cultural_enrichment_text
+                    intermediate_results['cultural_enrichment_raw'] = cultural_enrichment_text
                     processing_steps.append("✅ Enrichissement culturel ajouté")
             
-            # 5. Génération de la légende créative
+            # 5. Contexte final pour l'IA
+            final_ai_context = {
+                'image_description': image_analysis['description'],
+                'location_basic': enriched_context.get('location_basic', 'lieu inconnu'),
+                'cultural_context': enriched_context.get('cultural_context', ''),
+                'nearby_attractions': enriched_context.get('nearby_attractions', ''),
+                'cultural_enrichment': enriched_context.get('cultural_enrichment', ''),
+                'geographic_context': enriched_context.get('geographic_context', '')
+            }
+            intermediate_results['final_context_for_ai'] = final_ai_context
+            
+            # 6. Génération de la légende créative
             logger.info("   ✍️ Génération créative...")
             caption = self._generate_creative_caption(
                 image_analysis['description'], 
@@ -178,15 +215,17 @@ class AIService:
                 style,
                 prompts_used
             )
+            intermediate_results['caption_raw'] = caption
             processing_steps.append("✅ Légende générée")
             
-            # 6. Post-traitement selon configuration
+            # 7. Post-traitement selon configuration
             original_caption = caption
             caption = self.config.clean_caption(caption)
             if caption != original_caption:
                 processing_steps.append("✅ Post-traitement appliqué")
+                intermediate_results['caption_cleaned'] = caption
             
-            # 7. Calcul du score de confiance
+            # 8. Calcul du score de confiance
             confidence_score = self._calculate_confidence_score(
                 image_analysis, geo_location, caption
             )
@@ -206,7 +245,8 @@ class AIService:
                 geo_context=geo_location.to_dict(),
                 ai_models_used=list(self.models.values()),
                 processing_steps=processing_steps,
-                prompts_used=prompts_used if self.debug_config.get('log_prompts') else {}
+                prompts_used=prompts_used if self.debug_config.get('log_prompts') else {},
+                intermediate_results=intermediate_results
             )
             
         except Exception as e:
