@@ -278,9 +278,9 @@ DELIMITER ;
 -- ========================================
 
 -- Optimisations MySQL pour gros volumes
-SET GLOBAL innodb_buffer_pool_size = 1073741824; -- 1GB si possible
-SET GLOBAL innodb_log_file_size = 268435456;     -- 256MB
-SET GLOBAL max_allowed_packet = 67108864;        -- 64MB
+#SET GLOBAL innodb_buffer_pool_size = 1073741824; -- 1GB si possible
+#SET GLOBAL innodb_log_file_size = 268435456;     -- 256MB
+#SET GLOBAL max_allowed_packet = 67108864;        -- 64MB
 
 -- Messages de confirmation
 SELECT 'Base de données configurée avec succès!' as status;
