@@ -44,12 +44,10 @@ class CaptionResult:
     image_analysis: Dict[str, Any]
     geo_context: Dict[str, Any] 
     ai_models_used: List[str]
-    
-    # Nouveaux contextes intermédiaires détaillés
-    intermediate_results: Dict[str, Any] = None
-    
-    # Debug info
     processing_steps: List[str]
+    
+    # Champs optionnels avec défauts
+    intermediate_results: Dict[str, Any] = None
     prompts_used: Dict[str, str] = None
     error_messages: List[str] = None
     
