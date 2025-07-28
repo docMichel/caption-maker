@@ -18,10 +18,16 @@ import base64
 from dataclasses import dataclass
 import sys
 
-# Import du gestionnaire de config
+# Import du gestionnaire de config et GeoService
 sys.path.append(str(Path(__file__).parent.parent))
 from config.ai_config import AIConfig
-from .geo_service import GeoService, GeoLocation
+
+# Import GeoService (relatif ou absolu selon contexte)
+try:
+    from .geo_service import GeoService, GeoLocation
+except ImportError:
+    # Fallback pour exécution directe
+    from geo_service import GeoService, GeoLocation
 
 logger = logging.getLogger(__name__)
 
