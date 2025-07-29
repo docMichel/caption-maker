@@ -19,6 +19,18 @@ from src.config.server_config import ServerConfig
 
 logger = logging.getLogger(__name__)
 
+
+logger = logging.getLogger(__name__)
+
+# Ajoute ça :
+print("🔴 ADMIN_ROUTES IMPORTÉ")
+
+# Créer le blueprint
+admin_bp = Blueprint('admin', __name__)
+
+# Et juste après :
+print(f"🔴 ADMIN_BP CRÉÉ: {admin_bp}")
+
 # Créer le blueprint
 admin_bp = Blueprint('admin', __name__)
 
