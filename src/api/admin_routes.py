@@ -57,6 +57,7 @@ def get_ai_config():
 @admin_bp.route('/ai/stats', methods=['GET'])
 def get_stats():
     """Récupérer les statistiques d'utilisation"""
+    logger.info("📊 Début get_stats()")  # Ajoute ça
     try:
         # Récupérer les services
         from flask import current_app
