@@ -52,10 +52,13 @@ class Config:
     IMMICH_PROXY_URL = "http://localhost:3001"
     IMMICH_API_KEY = None  # À configurer
     
-    # Serveur
-    HOST = '127.0.0.1'
+    # Configuration serveur
+    HOST = '0.0.0.0'  # Écouter sur toutes les interfaces
     PORT = 5000
     DEBUG = True
+    USE_HTTPS = True  # Activer HTTPS
+    CERT_FILE = 'cert.pem'
+    KEY_FILE = 'key.pem'
     
     # Limites
     MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10MB
@@ -567,26 +570,55 @@ if __name__ == "__main__":
     print("🚀 Démarrage du serveur de génération de légendes")
     print("=" * 60)
     
+    # Générer certificat SSL si nécessaire
+    if Config.USE_HTTPS:
+        cert_path = Path(Config.CERT_FILE)
+        key_path = Path(Config.KEY_FILE)
+        
+        if not cert_path.exists() or not key_path.exists():
+            print("🔐 Génération certificat SSL auto-signé...")
+            import subprocess
+            subprocess.run([
+                'openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes',
+                '-out', Config.CERT_FILE, '-keyout', Config.KEY_FILE, '-days', '365',
+                '-subj', '/CN=localhost'
+            ], check=True)
+            print("✅ Certificat SSL généré")
+    
     # Initialiser les services
     if not init_services():
         print("❌ Échec initialisation des services")
         exit(1)
     
     # Informations de démarrage
-    print(f"📍 Serveur: http://{Config.HOST}:{Config.PORT}")
-    print(f"🔗 Health check: http://{Config.HOST}:{Config.PORT}/api/health")
-    print(f"🎨 API principale: http://{Config.HOST}:{Config.PORT}/api/ai/generate-caption")
-    print(f"⚙️  Configuration: http://{Config.HOST}:{Config.PORT}/api/ai/config")
+    protocol = "https" if Config.USE_HTTPS else "http"
+    print(f"📍 Serveur: {protocol}://{Config.HOST}:{Config.PORT}")
+    print(f"🔗 Health check: {protocol}://{Config.HOST}:{Config.PORT}/api/health")
+    print(f"🎨 API principale: {protocol}://{Config.HOST}:{Config.PORT}/api/ai/generate-caption")
+    print(f"⚙️  Configuration: {protocol}://{Config.HOST}:{Config.PORT}/api/ai/config")
     print("=" * 60)
     
     # Démarrer le serveur
     try:
-        app.run(
-            host=Config.HOST,
-            port=Config.PORT,
-            debug=Config.DEBUG,
-            threaded=True
-        )
+        if Config.USE_HTTPS:
+            import ssl
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            context.load_cert_chain(Config.CERT_FILE, Config.KEY_FILE)
+            
+            app.run(
+                host=Config.HOST,
+                port=Config.PORT,
+                debug=Config.DEBUG,
+                threaded=True,
+                ssl_context=context
+            )
+        else:
+            app.run(
+                host=Config.HOST,
+                port=Config.PORT,
+                debug=Config.DEBUG,
+                threaded=True
+            )
     except KeyboardInterrupt:
         print("\n👋 Arrêt du serveur")
     except Exception as e:
