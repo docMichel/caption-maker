@@ -259,153 +259,156 @@ def validate_async_params(data: Dict[str, Any]):
 
 def process_generation_async(request_id: str, data: Dict[str, Any]):
     """Fonction de traitement en arrière-plan pour génération asynchrone"""
+    from flask import current_app
+    app = current_app._get_current_object()
     sse_manager = get_sse_manager()
     
     try:
-        logger.info(f"🎨 Démarrage génération async pour {request_id}")
-        
-        # Extraire les paramètres
-        asset_id = data['asset_id']
-        image_base64 = data['image_base64']
-        latitude = float(data['latitude'])
-        longitude = float(data['longitude'])
-        language = data.get('language', 'français')
-        style = data.get('style', 'creative')
-        
-        # Récupérer les services
-        from flask import current_app
-        app = current_app._get_current_object()
-        with current_app.app_context():
-            services = current_app.config.get('SERVICES', {})
-            ai_service = services.get('ai_service')
-            geo_service = services.get('geo_service')
+        with app.app_context():
+            logger.info(f"🎨 Démarrage génération async pour {request_id}")
             
-            if not ai_service or not geo_service:
-                raise ValueError("Services non disponibles")
-        
-        # Étape 1: Préparation
-        sse_manager.broadcast_progress(request_id, 'preparation', 5, 'Préparation de l\'image...')
-        
-        # Sauvegarder l'image
-        image_processor = get_image_processor()
-        temp_image_path = image_processor.save_base64_image(image_base64, asset_id)
-        
-        if not temp_image_path:
-            sse_manager.broadcast_error(request_id, 'Erreur traitement image')
-            return
-        
-        sse_manager.broadcast_progress(request_id, 'preparation', 10, 'Image préparée')
-        
-        try:
-            # Étape 2: Analyse d'image
-            sse_manager.broadcast_progress(request_id, 'image_analysis', 15, 'Analyse avec LLaVA...')
+            # Extraire les paramètres
+            asset_id = data['asset_id']
+            image_base64 = data['image_base64']
+            latitude = float(data['latitude'])
+            longitude = float(data['longitude'])
+            language = data.get('language', 'français')
+            style = data.get('style', 'creative')
             
-            prompts_used = {}
-            image_analysis = ai_service._analyze_image_with_llava(Path(temp_image_path), prompts_used)
-            
-            sse_manager.broadcast_progress(request_id, 'image_analysis', 30, 'Analyse d\'image terminée')
-            sse_manager.broadcast_result(request_id, 'image_analysis', {
-                'description': image_analysis['description'],
-                'confidence': image_analysis['confidence'],
-                'model': image_analysis['model_used']
-            })
-            
-            # Étape 3: Géolocalisation
-            sse_manager.broadcast_progress(request_id, 'geolocation', 35, 'Géolocalisation en cours...')
-            
-            geo_location = geo_service.get_location_info(latitude, longitude)
-            geo_summary = geo_service.get_location_summary_for_ai(geo_location)
-            
-            sse_manager.broadcast_progress(request_id, 'geolocation', 50, 'Géolocalisation terminée')
-            sse_manager.broadcast_result(request_id, 'geolocation', {
-                'location_basic': geo_summary.get('location_basic', ''),
-                'cultural_context': geo_summary.get('cultural_context', ''),
-                'confidence': geo_location.confidence_score
-            })
-            
-            # Étape 4: Enrichissement culturel
-            cultural_enrichment = ""
-            if geo_location.confidence_score > 0.5 and geo_summary.get('cultural_context'):
-                sse_manager.broadcast_progress(request_id, 'cultural_enrichment', 55, 'Enrichissement culturel...')
+            # Récupérer les services
+            from flask import current_app
+            app = current_app._get_current_object()
+            with current_app.app_context():
+                services = current_app.config.get('SERVICES', {})
+                ai_service = services.get('ai_service')
+                geo_service = services.get('geo_service')
                 
-                try:
-                    cultural_enrichment = ai_service._enrich_cultural_context(geo_summary, prompts_used)
-                    if cultural_enrichment:
-                        sse_manager.broadcast_progress(request_id, 'cultural_enrichment', 65, 'Enrichissement terminé')
-                        sse_manager.broadcast_result(request_id, 'cultural_enrichment', {
-                            'enrichment': cultural_enrichment
-                        })
-                except Exception as e:
-                    logger.warning(f"Erreur enrichissement culturel: {e}")
+                if not ai_service or not geo_service:
+                    raise ValueError("Services non disponibles")
             
-            # Étape 5: Génération légende
-            sse_manager.broadcast_progress(request_id, 'caption_generation', 70, 'Génération créative...')
+            # Étape 1: Préparation
+            sse_manager.broadcast_progress(request_id, 'preparation', 5, 'Préparation de l\'image...')
             
-            enriched_context = geo_summary.copy()
-            if cultural_enrichment:
-                enriched_context['cultural_enrichment'] = cultural_enrichment
+            # Sauvegarder l'image
+            image_processor = get_image_processor()
+            temp_image_path = image_processor.save_base64_image(image_base64, asset_id)
             
-            raw_caption = ai_service._generate_creative_caption(
-                image_analysis['description'],
-                enriched_context,
-                language,
-                style,
-                prompts_used
-            )
+            if not temp_image_path:
+                sse_manager.broadcast_error(request_id, 'Erreur traitement image')
+                return
             
-            sse_manager.broadcast_progress(request_id, 'caption_generation', 85, 'Légende générée')
-            sse_manager.broadcast_result(request_id, 'raw_caption', {
-                'caption': raw_caption
-            })
+            sse_manager.broadcast_progress(request_id, 'preparation', 10, 'Image préparée')
             
-            # Étape 6: Post-traitement
-            sse_manager.broadcast_progress(request_id, 'post_processing', 90, 'Finalisation...')
-            
-            final_caption = ai_service.config.clean_caption(raw_caption)
-            confidence_score = ai_service._calculate_confidence_score(
-                image_analysis, geo_location, final_caption
-            )
-            
-            # Étape 7: Résultat final
-            sse_manager.broadcast_progress(request_id, 'completion', 100, 'Génération terminée!')
-            
-            final_result = {
-                'success': True,
-                'asset_id': asset_id,
-                'caption': final_caption,
-                'confidence_score': confidence_score,
-                'language': language,
-                'style': style,
-                'intermediate_results': {
-                    'image_analysis': {
-                        'description': image_analysis['description'],
-                        'confidence': image_analysis['confidence']
-                    },
-                    'geo_context': {
-                        'location_basic': geo_summary.get('location_basic', ''),
-                        'cultural_context': geo_summary.get('cultural_context', ''),
-                        'confidence': geo_location.confidence_score
-                    },
-                    'cultural_enrichment': cultural_enrichment,
-                    'raw_caption': raw_caption
-                },
-                'metadata': {
-                    'coordinates': [latitude, longitude],
-                    'existing_caption': data.get('existing_caption', ''),
-                    'timestamp': time.strftime('%Y-%m-%d %H:%M:%S')
-                }
-            }
-            
-            sse_manager.broadcast_complete(request_id, final_result)
-            logger.info(f"✅ Génération async terminée pour {request_id}")
-            
-        finally:
-            # Nettoyer fichier temporaire
             try:
-                import os
-                os.unlink(temp_image_path)
-            except Exception:
-                pass
+                # Étape 2: Analyse d'image
+                sse_manager.broadcast_progress(request_id, 'image_analysis', 15, 'Analyse avec LLaVA...')
+                
+                prompts_used = {}
+                image_analysis = ai_service._analyze_image_with_llava(Path(temp_image_path), prompts_used)
+                
+                sse_manager.broadcast_progress(request_id, 'image_analysis', 30, 'Analyse d\'image terminée')
+                sse_manager.broadcast_result(request_id, 'image_analysis', {
+                    'description': image_analysis['description'],
+                    'confidence': image_analysis['confidence'],
+                    'model': image_analysis['model_used']
+                })
+                
+                # Étape 3: Géolocalisation
+                sse_manager.broadcast_progress(request_id, 'geolocation', 35, 'Géolocalisation en cours...')
+                
+                geo_location = geo_service.get_location_info(latitude, longitude)
+                geo_summary = geo_service.get_location_summary_for_ai(geo_location)
+                
+                sse_manager.broadcast_progress(request_id, 'geolocation', 50, 'Géolocalisation terminée')
+                sse_manager.broadcast_result(request_id, 'geolocation', {
+                    'location_basic': geo_summary.get('location_basic', ''),
+                    'cultural_context': geo_summary.get('cultural_context', ''),
+                    'confidence': geo_location.confidence_score
+                })
+                
+                # Étape 4: Enrichissement culturel
+                cultural_enrichment = ""
+                if geo_location.confidence_score > 0.5 and geo_summary.get('cultural_context'):
+                    sse_manager.broadcast_progress(request_id, 'cultural_enrichment', 55, 'Enrichissement culturel...')
+                    
+                    try:
+                        cultural_enrichment = ai_service._enrich_cultural_context(geo_summary, prompts_used)
+                        if cultural_enrichment:
+                            sse_manager.broadcast_progress(request_id, 'cultural_enrichment', 65, 'Enrichissement terminé')
+                            sse_manager.broadcast_result(request_id, 'cultural_enrichment', {
+                                'enrichment': cultural_enrichment
+                            })
+                    except Exception as e:
+                        logger.warning(f"Erreur enrichissement culturel: {e}")
+                
+                # Étape 5: Génération légende
+                sse_manager.broadcast_progress(request_id, 'caption_generation', 70, 'Génération créative...')
+                
+                enriched_context = geo_summary.copy()
+                if cultural_enrichment:
+                    enriched_context['cultural_enrichment'] = cultural_enrichment
+                
+                raw_caption = ai_service._generate_creative_caption(
+                    image_analysis['description'],
+                    enriched_context,
+                    language,
+                    style,
+                    prompts_used
+                )
+                
+                sse_manager.broadcast_progress(request_id, 'caption_generation', 85, 'Légende générée')
+                sse_manager.broadcast_result(request_id, 'raw_caption', {
+                    'caption': raw_caption
+                })
+                
+                # Étape 6: Post-traitement
+                sse_manager.broadcast_progress(request_id, 'post_processing', 90, 'Finalisation...')
+                
+                final_caption = ai_service.config.clean_caption(raw_caption)
+                confidence_score = ai_service._calculate_confidence_score(
+                    image_analysis, geo_location, final_caption
+                )
+                
+                # Étape 7: Résultat final
+                sse_manager.broadcast_progress(request_id, 'completion', 100, 'Génération terminée!')
+                
+                final_result = {
+                    'success': True,
+                    'asset_id': asset_id,
+                    'caption': final_caption,
+                    'confidence_score': confidence_score,
+                    'language': language,
+                    'style': style,
+                    'intermediate_results': {
+                        'image_analysis': {
+                            'description': image_analysis['description'],
+                            'confidence': image_analysis['confidence']
+                        },
+                        'geo_context': {
+                            'location_basic': geo_summary.get('location_basic', ''),
+                            'cultural_context': geo_summary.get('cultural_context', ''),
+                            'confidence': geo_location.confidence_score
+                        },
+                        'cultural_enrichment': cultural_enrichment,
+                        'raw_caption': raw_caption
+                    },
+                    'metadata': {
+                        'coordinates': [latitude, longitude],
+                        'existing_caption': data.get('existing_caption', ''),
+                        'timestamp': time.strftime('%Y-%m-%d %H:%M:%S')
+                    }
+                }
+                
+                sse_manager.broadcast_complete(request_id, final_result)
+                logger.info(f"✅ Génération async terminée pour {request_id}")
+                
+            finally:
+                # Nettoyer fichier temporaire
+                try:
+                    import os
+                    os.unlink(temp_image_path)
+                except Exception:
+                    pass
                 
     except Exception as e:
         logger.error(f"❌ Erreur génération async: {e}")
