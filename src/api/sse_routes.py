@@ -5,18 +5,21 @@
 Routes API pour Server-Sent Events (SSE)
 Génération asynchrone avec progression en temps réel
 """
+# D'abord les imports système
+import sys
+from pathlib import Path
+# Ajouter le chemin parent au PYTHONPATH
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# Maintenant les autres imports
 from flask import Blueprint, request, jsonify, Response, current_app
 import logging
 import json
 import time
 import threading
-import pathlib
-import sys
-sys.path.insert(0, str(Path(__file__).parent.parent))
 from typing import Dict, Any
 
-# Import des services et utilitaires
+# Import des services et utilitaires (sans ..)
 from utils.sse_manager import get_sse_manager
 from utils.image_utils import get_image_processor
 from config.server_config import ServerConfig
