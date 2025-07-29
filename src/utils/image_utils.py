@@ -212,7 +212,7 @@ def get_image_processor(temp_dir: Path = None, max_size: int = None) -> ImagePro
     global _image_processor
     
     if _image_processor is None:
-        from ..config.server_config import ServerConfig
+        from config.server_config import ServerConfig
         _image_processor = ImageProcessor(
             temp_dir=temp_dir or ServerConfig.TEMP_DIR,
             max_size=max_size or ServerConfig.MAX_IMAGE_SIZE
