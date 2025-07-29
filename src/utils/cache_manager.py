@@ -181,6 +181,10 @@ class CacheManager:
     
     def get_info(self) -> Dict[str, Any]:
         """Récupérer des informations détaillées sur le cache"""
+        return {
+            'stats': self.get_stats(),
+            'entries': []  # Temporairement vide
+            }
         with self.lock:
             entries_info = []
             current_time = time.time()

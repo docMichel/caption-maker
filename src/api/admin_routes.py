@@ -193,7 +193,7 @@ def reload_config():
 @admin_bp.route('/ai/cache/info', methods=['GET'])
 def get_cache_info():
     """Obtenir des informations détaillées sur le cache"""
-    return jsonify({'test': 'cache info works'})
+    #return jsonify({'test': 'cache info works'})
     try:
         cache = get_generation_cache()
         cache_info = cache.get_info()
