@@ -74,7 +74,11 @@ def create_app():
     
     # Stocker le temps de démarrage
     app.config['START_TIME'] = time.time()
-    
+    # Debug : lister toutes les routes
+    print("\n📍 Routes enregistrées:")
+    for rule in app.url_map.iter_rules():
+        print(f"   {rule.endpoint}: {rule.rule}")
+    print()
     return app
 
 
