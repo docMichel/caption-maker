@@ -133,6 +133,7 @@ def main():
     print(f"{Colors.GREEN}✅ Image encodée{Colors.END} ({len(image_base64)} caractères)")
     
     # 5. Test synchrone
+    '''    
     print(f"\n{Colors.YELLOW}=== TEST GÉNÉRATION SYNCHRONE ==={Colors.END}")
     
     sync_result = test_endpoint("POST", "/api/ai/generate-caption", "Génération synchrone", {
@@ -149,7 +150,7 @@ def main():
         print(f'"{sync_result["caption"]}"')
         print(f"Confiance: {sync_result['confidence_score']:.2f}")
         print(f"Temps: {sync_result['generation_time']:.1f}s")
-    
+    '''
     # 6. Test asynchrone avec SSE
     print(f"\n{Colors.YELLOW}=== TEST GÉNÉRATION ASYNCHRONE ==={Colors.END}")
     
