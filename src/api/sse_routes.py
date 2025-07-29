@@ -11,7 +11,7 @@ import logging
 import json
 import time
 import threading
-from pathlib import Path
+import pathlib
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from typing import Dict, Any
@@ -305,8 +305,7 @@ def process_generation_async(request_id: str, data: Dict[str, Any], app):
                 sse_manager.broadcast_progress(request_id, 'image_analysis', 15, 'Analyse avec LLaVA...')
                 
                 prompts_used = {}
-                image_analysis = ai_service._analyze_image_with_llava(Path(temp_image_path), prompts_used)
-                
+                image_analysis = ai_service._analyze_image_with_llava(pathlib.Path(temp_image_path), prompts_used)                
                 sse_manager.broadcast_progress(request_id, 'image_analysis', 30, 'Analyse d\'image terminée')
                 sse_manager.broadcast_result(request_id, 'image_analysis', {
                     'description': image_analysis['description'],
