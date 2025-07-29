@@ -274,6 +274,7 @@ def process_generation_async(request_id: str, data: Dict[str, Any]):
         
         # Récupérer les services
         from flask import current_app
+        app = current_app._get_current_object()
         with current_app.app_context():
             services = current_app.config.get('SERVICES', {})
             ai_service = services.get('ai_service')

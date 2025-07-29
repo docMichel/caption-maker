@@ -54,11 +54,11 @@ class ImageProcessor:
                 raise ValueError(f"Image trop grande: {len(image_data)} bytes (max: {self.max_size})")
             
             # Vérifier le format
-            '''
+
             image_format = self._verify_image_format(image_data)
             if not image_format:
                 raise ValueError("Format d'image non supporté")
-            '''
+   
             
             # Créer un fichier temporaire unique
             timestamp = int(time.time() * 1000)
@@ -91,26 +91,21 @@ class ImageProcessor:
     
     def _verify_image_format(self, image_data: bytes) -> Optional[str]:
         """Vérifier et retourner le format de l'image"""
-        # Utiliser imghdr pour détecter le format
-        image_type = imghdr.what(None, image_data)
-        
-        # Formats supportés
-        supported_formats = {'jpeg', 'jpg', 'png', 'gif', 'bmp', 'webp'}
-        
-        if image_type in supported_formats:
-            return 'jpg' if image_type == 'jpeg' else image_type
-        
-        # Essayer avec PIL si imghdr échoue
+        # Utiliser PIL pour détecter le format
         try:
             img = Image.open(io.BytesIO(image_data))
-            format_lower = img.format.lower() if img.format else None
-            if format_lower in supported_formats:
-                return 'jpg' if format_lower == 'jpeg' else format_lower
+            format_str = img.format.lower() if img.format else None
+            
+            # Formats supportés
+            supported_formats = {'jpeg', 'jpg', 'png', 'gif', 'bmp', 'webp'}
+            
+            if format_str in supported_formats:
+                return 'jpg' if format_str == 'jpeg' else format_str
+            
+            return None
         except Exception:
-            pass
+            return None
         
-        return None
-    
     def get_image_info(self, image_path: str) -> Optional[dict]:
         """Obtenir les informations d'une image"""
         try:
@@ -191,9 +186,13 @@ class ImageProcessor:
             with open(image_path, 'rb') as f:
                 image_data = f.read()
             
-            # Détecter le type MIME
-            image_type = imghdr.what(image_path)
-            mime_type = f"image/{image_type}" if image_type else "image/jpeg"
+            # Détecter le type MIME avec PIL
+            try:
+                with Image.open(image_path) as img:
+                    format_str = img.format.lower() if img.format else 'jpeg'
+                    mime_type = f"image/{format_str}"
+            except:
+                mime_type = "image/jpeg"  # Fallback
             
             # Encoder en base64
             base64_data = base64.b64encode(image_data).decode('utf-8')
@@ -204,7 +203,6 @@ class ImageProcessor:
         except Exception as e:
             logger.error(f"Erreur encodage base64: {e}")
             return None
-
 
 # Instance globale (optionnel)
 _image_processor = None
