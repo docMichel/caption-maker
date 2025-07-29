@@ -181,6 +181,31 @@ class CacheManager:
     
     def get_info(self) -> Dict[str, Any]:
         """Récupérer des informations détaillées sur le cache"""
+        with self.lock:  # Acquérir le lock une seule fois
+            entries_info = []
+            current_time = time.time()
+            
+            for key, entry in list(self.cache.items()):  # list() pour éviter les modifs pendant iteration
+                age = current_time - entry.created_at
+                remaining_ttl = entry.ttl - age
+                
+                entries_info.append({
+                    'key': key,
+                    'age_seconds': int(age),
+                    'remaining_ttl': int(max(0, remaining_ttl)),
+                    'access_count': entry.access_count,
+                    'is_valid': entry.is_valid()
+                })
+            
+            stats = self.get_stats()  # Appeler get_stats() en dehors du lock
+        
+        return {
+            'stats': stats,
+            'entries': entries_info
+        }
+    
+    def Xget_info(self) -> Dict[str, Any]:
+        """Récupérer des informations détaillées sur le cache"""
         return {
             'stats': self.get_stats(),
             'entries': []  # Temporairement vide
