@@ -177,6 +177,7 @@ def main():
         sse_thread.join()
     '''
     # 7. Test régénération
+    '''
     print(f"\n{Colors.YELLOW}=== TEST RÉGÉNÉRATION ==={Colors.END}")
     
     regen_result = test_endpoint("POST", "/api/ai/regenerate-final", "Régénération finale", {
@@ -190,7 +191,7 @@ def main():
     if regen_result and regen_result.get('success'):
         print(f"\n{Colors.GREEN}Légende régénérée:{Colors.END}")
         print(f'"{regen_result["caption"]}"')
-    
+    '''
     # 8. Info cache
     cache_info = test_endpoint("GET", "/api/ai/cache/info", "Informations cache")
     
