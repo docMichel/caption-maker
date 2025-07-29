@@ -12,7 +12,7 @@ import logging
 from pathlib import Path
 import time
 from typing import Optional, Tuple
-import imghdr
+# import imghdr
 from PIL import Image
 import io
 
@@ -54,9 +54,11 @@ class ImageProcessor:
                 raise ValueError(f"Image trop grande: {len(image_data)} bytes (max: {self.max_size})")
             
             # Vérifier le format
+            '''
             image_format = self._verify_image_format(image_data)
             if not image_format:
                 raise ValueError("Format d'image non supporté")
+            '''
             
             # Créer un fichier temporaire unique
             timestamp = int(time.time() * 1000)
