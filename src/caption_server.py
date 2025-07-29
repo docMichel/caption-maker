@@ -555,10 +555,13 @@ def internal_error(error):
     }), 500
 
 # Nettoyage périodique des fichiers temporaires
-@app.before_first_request
 def setup_cleanup():
     """Setup initial et nettoyage périodique"""
     cleanup_temp_files()
+
+# Appeler setup au démarrage
+with app.app_context():
+    setup_cleanup()
 
 if __name__ == "__main__":
     print("🚀 Démarrage du serveur de génération de légendes")
