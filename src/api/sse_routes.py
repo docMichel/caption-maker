@@ -266,6 +266,7 @@ def process_generation_async(request_id: str, data: Dict[str, Any], app):
     sse_manager = get_sse_manager()
     
     with app.app_context():
+        from utils.image_utils import get_image_processor
         try:
             logger.info(f"🎨 Démarrage génération async pour {request_id}")
             
