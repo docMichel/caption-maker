@@ -112,7 +112,7 @@ class ImmichAPIService:
         """
         try:
             # Test avec endpoint de base (server info)
-            response = self._make_request('GET', '/api/server-info')
+            response = self._make_request('GET', '/api/server/version')
             
             if response:
                 logger.info("✅ Connexion Immich API réussie")
@@ -153,7 +153,7 @@ class ImmichAPIService:
         
         try:
             # 1. Récupérer les données de l'asset
-            asset_data = self._make_request('GET', f'/api/assets/{asset_id}')
+            asset_data = self._make_request('GET', f'/api/asset/{asset_id}')
             if not asset_data:
                 logger.warning(f"⚠️  Asset {asset_id} non trouvé")
                 return None
@@ -194,9 +194,9 @@ class ImmichAPIService:
         # Endpoint pour récupérer les visages
         # Note: L'endpoint exact peut varier selon la version d'Immich
         faces_endpoints = [
-            f'/api/faces?assetId={asset_id}',  # Endpoint moderne
-            f'/api/assets/{asset_id}/faces',   # Endpoint alternatif
-            f'/api/person/faces/{asset_id}'    # Endpoint legacy
+            f'/api/face?assetId={asset_id}',  # Endpoint moderne
+            f'/api/asset/{asset_id}/faces',   # Endpoint alternatif
+            f'/api/faces/asset/{asset_id}'    # Endpoint legacy
         ]
         
         for endpoint in faces_endpoints:
@@ -226,7 +226,7 @@ class ImmichAPIService:
                 return cached_people
         
         try:
-            people_response = self._make_request('GET', '/api/people')
+            people_response = self._make_request('GET', '/api/person')
             people_dict = {}
             
             if people_response:
