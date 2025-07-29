@@ -6,7 +6,7 @@ Routes API pour Server-Sent Events (SSE)
 Génération asynchrone avec progression en temps réel
 """
 
-from flask import Blueprint, request, jsonify, Response
+from flask import Blueprint, request, jsonify, Response, current_app
 import logging
 import json
 import time
@@ -15,9 +15,9 @@ from pathlib import Path
 from typing import Dict, Any
 
 # Import des services et utilitaires
-from src.utils.sse_manager import get_sse_manager
-from src.utils.image_utils import get_image_processor
-from src.config.server_config import ServerConfig
+from ..utils.sse_manager import get_sse_manager
+from ..utils.image_utils import get_image_processor
+from ..config.server_config import ServerConfig
 
 logger = logging.getLogger(__name__)
 
@@ -119,10 +119,13 @@ def generate_caption_async():
         if validation_error:
             return validation_error
         
+        # Récupérer l'app pour le contexte
+        app = current_app._get_current_object()
+        
         # Démarrer le traitement en arrière-plan
         thread = threading.Thread(
             target=process_generation_async,
-            args=(request_id, data),
+            args=(request_id, data, app),
             daemon=True
         )
         thread.start()
@@ -175,7 +178,6 @@ def regenerate_final():
         logger.info("♻️ Régénération légende finale")
         
         # Récupérer le service IA
-        from flask import current_app
         ai_service = current_app.config.get('SERVICES', {}).get('ai_service')
         
         if not ai_service:
@@ -257,14 +259,12 @@ def validate_async_params(data: Dict[str, Any]):
     return None
 
 
-def process_generation_async(request_id: str, data: Dict[str, Any]):
+def process_generation_async(request_id: str, data: Dict[str, Any], app):
     """Fonction de traitement en arrière-plan pour génération asynchrone"""
-    from flask import current_app
-    app = current_app._get_current_object()
     sse_manager = get_sse_manager()
     
-    try:
-        with app.app_context():
+    with app.app_context():
+        try:
             logger.info(f"🎨 Démarrage génération async pour {request_id}")
             
             # Extraire les paramètres
@@ -276,15 +276,12 @@ def process_generation_async(request_id: str, data: Dict[str, Any]):
             style = data.get('style', 'creative')
             
             # Récupérer les services
-            from flask import current_app
-            app = current_app._get_current_object()
-            with current_app.app_context():
-                services = current_app.config.get('SERVICES', {})
-                ai_service = services.get('ai_service')
-                geo_service = services.get('geo_service')
-                
-                if not ai_service or not geo_service:
-                    raise ValueError("Services non disponibles")
+            services = app.config.get('SERVICES', {})
+            ai_service = services.get('ai_service')
+            geo_service = services.get('geo_service')
+            
+            if not ai_service or not geo_service:
+                raise ValueError("Services non disponibles")
             
             # Étape 1: Préparation
             sse_manager.broadcast_progress(request_id, 'preparation', 5, 'Préparation de l\'image...')
@@ -409,7 +406,7 @@ def process_generation_async(request_id: str, data: Dict[str, Any]):
                     os.unlink(temp_image_path)
                 except Exception:
                     pass
-                
-    except Exception as e:
-        logger.error(f"❌ Erreur génération async: {e}")
-        sse_manager.broadcast_error(request_id, str(e))
+                    
+        except Exception as e:
+            logger.error(f"❌ Erreur génération async: {e}")
+            sse_manager.broadcast_error(request_id, str(e))
