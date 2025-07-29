@@ -197,7 +197,7 @@ class CacheManager:
                     'is_valid': entry.is_valid()
                 })
             
-            stats = self.get_stats()  # Appeler get_stats() en dehors du lock
+        stats = self.get_stats()  # Appeler get_stats() en dehors du lock
         
         return {
             'stats': stats,
