@@ -7,8 +7,23 @@ Point d'entrée de l'application
 """
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from flask import Flask
+from flask_cors import CORS
+import logging
+import time
+
+# Import de la configuration
+from src.config.server_config import ServerConfig
+
+# Import des blueprints
+from src.api import api_bp, sse_bp, admin_bp
+
+# Import des services
+from src.services.geo_service import GeoService
+from src.services.ai_service import AIService
+from src.services.immich_api_service import ImmichAPIService
 from flask import Flask
 from flask import Flask
 from flask_cors import CORS

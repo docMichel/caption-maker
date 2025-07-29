@@ -12,10 +12,10 @@ import time
 from typing import Dict, Any
 
 # Import des utilitaires
-from ..utils.cache_manager import get_generation_cache
-from ..utils.sse_manager import get_sse_manager
-from ..utils.image_utils import get_image_processor
-from ..config.server_config import ServerConfig
+from src.utils.cache_manager import get_generation_cache
+from src.utils.sse_manager import get_sse_manager
+from src.utils.image_utils import get_image_processor
+from src.config.server_config import ServerConfig
 
 logger = logging.getLogger(__name__)
 

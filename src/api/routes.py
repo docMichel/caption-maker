@@ -12,12 +12,12 @@ import time
 from typing import Dict, Any
 
 # Import des services et utilitaires
-from ..services.ai_service import AIService
-from ..services.geo_service import GeoService
-from ..services.immich_api_service import ImmichAPIService
-from ..utils.image_utils import get_image_processor
-from ..utils.cache_manager import get_generation_cache
-from ..config.server_config import ServerConfig
+from src.services.ai_service import AIService
+from src.services.geo_service import GeoService
+from src.services.immich_api_service import ImmichAPIService
+from src.utils.image_utils import get_image_processor
+from src.utils.cache_manager import get_generation_cache
+from src.config.server_config import ServerConfig
 
 logger = logging.getLogger(__name__)
 
