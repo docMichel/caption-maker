@@ -152,6 +152,7 @@ def main():
         print(f"Temps: {sync_result['generation_time']:.1f}s")
     '''
     # 6. Test asynchrone avec SSE
+    '''
     print(f"\n{Colors.YELLOW}=== TEST GÉNÉRATION ASYNCHRONE ==={Colors.END}")
     
     request_id = f"test-async-{int(time.time())}"
@@ -174,7 +175,7 @@ def main():
         )
         sse_thread.start()
         sse_thread.join()
-    
+    '''
     # 7. Test régénération
     print(f"\n{Colors.YELLOW}=== TEST RÉGÉNÉRATION ==={Colors.END}")
     
