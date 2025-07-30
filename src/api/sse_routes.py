@@ -284,11 +284,15 @@ def process_generation_async(request_id: str, data: Dict[str, Any], app):
             # Extraire les paramètres
             asset_id = data['asset_id']
             image_base64 = data['image_base64']
-            latitude = float(data['latitude'])
-            longitude = float(data['longitude'])
             language = data.get('language', 'français')
             style = data.get('style', 'creative')
-            
+            latitude = data.get('latitude')
+            longitude = data.get('longitude')
+            if latitude is not None:
+                latitude = float(latitude)
+            if longitude is not None:
+                longitude = float(longitude)
+
             # Récupérer les services
             services = app.config.get('SERVICES', {})
             ai_service = services.get('ai_service')

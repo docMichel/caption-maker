@@ -163,9 +163,12 @@ def generate_caption():
                 'cached': True,
                 **cached_result
             })
-        
-        logger.info(f"🎨 Génération légende pour asset {asset_id} ({latitude}, {longitude})")
-        
+                
+        if latitude is not None and longitude is not None:
+            logger.info(f"🎨 Génération légende pour {Path(image_path).name} ({latitude:.4f}, {longitude:.4f})")
+        else:
+            logger.info(f"🎨 Génération légende pour {Path(image_path).name} (sans géolocalisation)")        
+       
         # Sauvegarder l'image temporairement
         image_processor = get_image_processor()
         temp_image_path = image_processor.save_base64_image(image_base64, asset_id)
