@@ -173,13 +173,30 @@ class AIService:
             processing_steps.append("✅ Analyse visuelle terminée")
             
             # 3. Récupération contexte géographique
-            logger.info("   🌍 Enrichissement géographique...")
-            geo_location = self.geo_service.get_location_info(latitude, longitude)
-            geo_summary = self.geo_service.get_location_summary_for_ai(geo_location)
-            
-            intermediate_results['geo_location_raw'] = geo_location.to_dict()
-            intermediate_results['geo_summary_basic'] = geo_summary.copy()
-            processing_steps.append("✅ Contexte géographique récupéré")
+            if latitude is None or longitude is None:
+                logger.info("   🌍 Pas de géolocalisation disponible")
+                # Créer un contexte géo vide
+                geo_location = GeoLocation(
+                    latitude=0, 
+                    longitude=0,
+                    formatted_address="Lieu inconnu",
+                    confidence_score=0.0
+                )
+                geo_summary = {
+                    'location_basic': '',
+                    'cultural_context': '',
+                    'nearby_attractions': '',
+                    'geographic_context': ''
+                }
+                processing_steps.append("⚠️ Géolocalisation non disponible")
+            else:
+                logger.info("   🌍 Enrichissement géographique...")
+                geo_location = self.geo_service.get_location_info(latitude, longitude)
+                geo_summary = self.geo_service.get_location_summary_for_ai(geo_location)
+                
+                intermediate_results['geo_location_raw'] = geo_location.to_dict()
+                intermediate_results['geo_summary_basic'] = geo_summary.copy()
+                processing_steps.append("✅ Contexte géographique récupéré")
             
             # 4. Enrichissement culturel avec Qwen2 (si pertinent)
             enriched_context = geo_summary.copy()

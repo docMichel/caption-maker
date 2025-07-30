@@ -138,6 +138,17 @@ def generate_caption():
         if validation_error:
             return validation_error
         
+        # Ajoute cette partie pour gérer les coordonnées manquantes
+        if latitude is None or longitude is None:
+            logger.info(f"🎨 Génération légende SANS géolocalisation pour {asset_id}")
+            # Utiliser des valeurs par défaut ou None
+            latitude = 0.0
+            longitude = 0.0
+            skip_geolocation = True
+        else:
+            skip_geolocation = False
+            logger.info(f"🎨 Génération légende pour asset {asset_id} ({latitude}, {longitude})")
+       
         # Vérifier le cache
         cache = get_generation_cache()
         cached_result = cache.get_caption(
@@ -188,13 +199,23 @@ def generate_caption():
                     logger.warning(f"⚠️  Erreur récupération visages: {e}")
             
             # Générer la légende avec l'IA
-            generation_result = ai_service.generate_caption(
-                image_path=temp_image_path,
-                latitude=float(latitude),
-                longitude=float(longitude),
-                language=language,
-                style=style
-            )
+            if skip_geolocation:
+                # Appeler une version sans géoloc ou passer un flag
+                generation_result = ai_service.generate_caption(
+                    image_path=temp_image_path,
+                    latitude=None,  # Passer None
+                    longitude=None,
+                    language=language,
+                    style=style
+                )
+            else:
+                generation_result = ai_service.generate_caption(
+                    image_path=temp_image_path,
+                    latitude=float(latitude),
+                    longitude=float(longitude),
+                    language=language,
+                    style=style
+                )
             
             # Préparer la réponse
             response_data = prepare_response_data(
