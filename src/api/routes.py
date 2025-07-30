@@ -294,6 +294,11 @@ def validate_generation_params(asset_id, image_base64, latitude, longitude):
 def prepare_response_data(generation_result, asset_id, face_context, 
                          existing_caption, latitude, longitude):
     """Préparer les données de réponse"""
+    # Récupérer les résultats intermédiaires de manière sûre
+    intermediate_results = generation_result.intermediate_results or {}
+    image_analysis_raw = intermediate_results.get('image_analysis_raw', {})
+    geo_summary_basic = intermediate_results.get('geo_summary_basic', {})
+    
     response_data = {
         'success': True,
         'cached': False,
@@ -309,32 +314,18 @@ def prepare_response_data(generation_result, asset_id, face_context,
         # Contextes intermédiaires
         'intermediate_results': {
             'image_analysis': {
-                'description': generation_result.intermediate_results.get(
-                    'image_analysis_raw', {}
-                ).get('description', ''),
-                'confidence': generation_result.intermediate_results.get(
-                    'image_analysis_raw', {}
-                ).get('confidence', 0),
-                'model': generation_result.intermediate_results.get(
-                    'image_analysis_raw', {}
-                ).get('model_used', '')
+                'description': image_analysis_raw.get('description', ''),
+                'confidence': image_analysis_raw.get('confidence', 0),
+                'model': image_analysis_raw.get('model_used', '')
             },
             'geo_context': {
-                'location_basic': generation_result.intermediate_results.get(
-                    'geo_summary_basic', {}
-                ).get('location_basic', ''),
-                'cultural_context': generation_result.intermediate_results.get(
-                    'geo_summary_basic', {}
-                ).get('cultural_context', ''),
-                'nearby_attractions': generation_result.intermediate_results.get(
-                    'geo_summary_basic', {}
-                ).get('nearby_attractions', ''),
-                'confidence': generation_result.geo_context.get('confidence_score', 0)
+                'location_basic': geo_summary_basic.get('location_basic', ''),
+                'cultural_context': geo_summary_basic.get('cultural_context', ''),
+                'nearby_attractions': geo_summary_basic.get('nearby_attractions', ''),
+                'confidence': generation_result.geo_context.get('confidence_score', 0) if generation_result.geo_context else 0
             },
-            'cultural_enrichment': generation_result.intermediate_results.get(
-                'cultural_enrichment_raw', ''
-            ),
-            'raw_caption': generation_result.intermediate_results.get('caption_raw', ''),
+            'cultural_enrichment': intermediate_results.get('cultural_enrichment_raw', ''),
+            'raw_caption': intermediate_results.get('caption_raw', ''),
             'face_context': face_context
         },
         
@@ -366,13 +357,16 @@ def analyze_caption_improvement(original: str, generated_result) -> Dict[str, An
         if len(generated_result.caption) > len(original):
             improvements.append("Plus détaillée")
         
+        # Récupérer les résultats intermédiaires de manière sûre
+        intermediate_results = generated_result.intermediate_results or {}
+        geo_summary_basic = intermediate_results.get('geo_summary_basic', {})
+        
         # Contexte géographique
-        geo_context = generated_result.intermediate_results.get('geo_summary_basic', {})
-        if geo_context.get('location_basic'):
+        if geo_summary_basic.get('location_basic'):
             improvements.append("Contexte géographique ajouté")
         
         # Contexte culturel
-        if generated_result.intermediate_results.get('cultural_enrichment_raw'):
+        if intermediate_results.get('cultural_enrichment_raw'):
             improvements.append("Enrichissement culturel")
         
         # Style
