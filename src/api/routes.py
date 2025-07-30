@@ -194,8 +194,11 @@ def generate_caption():
                     if faces_info:
                         face_context = immich_service.generate_face_context_for_ai(faces_info)
                         logger.info(f"👥 Contexte visages: {face_context.get('social_context', 'N/A')}")
+                    else:
+                        logger.info(f"ℹ️  Pas de visages trouvés pour {asset_id}")
                 except Exception as e:
-                    logger.warning(f"⚠️  Erreur récupération visages: {e}")
+                    # Ne pas faire échouer la génération si Immich n'a pas l'asset
+                    logger.warning(f"⚠️  Erreur récupération visages (non bloquant): {e}")
             
             # Générer la légende avec l'IA
             if skip_geolocation:
