@@ -299,8 +299,8 @@ def prepare_response_data(generation_result, asset_id, face_context,
     # Récupérer les résultats intermédiaires de manière sûre
     intermediate_results = generation_result.intermediate_results or {}
     image_analysis_raw = intermediate_results.get('image_analysis_raw', {})
-    geo_summary_basic = intermediate_results.get('geo_summary_basic', {})
-    
+    geo_summary_basic = intermediate_results.get('geo_summary_basic') or {}
+
     response_data = {
         'success': True,
         'cached': False,
