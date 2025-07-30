@@ -12,7 +12,7 @@ import threading
 from pathlib import Path
 
 # Configuration
-SERVER_URL = "http://localhost:5000"
+SERVER_URL = "http://localhost:5001" 
 TEST_IMAGE = "test.jpg"
 
 class Colors:
