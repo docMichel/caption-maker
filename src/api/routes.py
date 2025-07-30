@@ -244,7 +244,9 @@ def generate_caption():
                 pass
             
     except Exception as e:
+        import traceback
         logger.error(f"❌ Erreur génération légende: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return jsonify({
             'success': False,
             'error': f'Erreur interne: {str(e)}',
