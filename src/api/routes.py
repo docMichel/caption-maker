@@ -249,12 +249,14 @@ def validate_generation_params(asset_id, image_base64, latitude, longitude):
         }), 400
     
     if latitude is None or longitude is None:
+        return None
+    '''
         return jsonify({
             'success': False,
             'error': 'Coordonnées GPS requises (latitude, longitude)',
             'code': 'MISSING_COORDINATES'
         }), 400
-    
+    '''
     # Valider les coordonnées
     try:
         lat = float(latitude)
