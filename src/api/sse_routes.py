@@ -238,7 +238,7 @@ def regenerate_final():
 
 def validate_async_params(data: Dict[str, Any]):
     """Valider les paramètres pour génération asynchrone"""
-    required = ['asset_id', 'image_base64', 'latitude', 'longitude']
+    required = ['asset_id', 'image_base64'] #, 'latitude', 'longitude']
     
     for field in required:
         if field not in data or data[field] is None:
@@ -249,19 +249,20 @@ def validate_async_params(data: Dict[str, Any]):
             }), 400
     
     # Valider les coordonnées
-    try:
-        lat = float(data['latitude'])
-        lon = float(data['longitude'])
-        if not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
-            raise ValueError("Coordonnées invalides")
-    except (ValueError, TypeError):
-        return jsonify({
-            'success': False,
-            'error': 'Coordonnées GPS invalides',
-            'code': 'INVALID_COORDINATES'
-        }), 400
-    
-    return None
+        if 'latitude' in data and 'longitude' in data and data['latitude'] is not None and data['longitude'] is not None:
+            try:
+                lat = float(data['latitude'])
+                lon = float(data['longitude'])
+                if not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
+                    raise ValueError("Coordonnées invalides")
+            except (ValueError, TypeError):
+                return jsonify({
+                    'success': False,
+                    'error': 'Coordonnées GPS invalides',
+                    'code': 'INVALID_COORDINATES'
+                }), 400
+            
+        return None
 
 
 def process_generation_async(request_id: str, data: Dict[str, Any], app):
@@ -323,21 +324,46 @@ def process_generation_async(request_id: str, data: Dict[str, Any], app):
                 })
                 
                 # Étape 3: Géolocalisation
-                sse_manager.broadcast_progress(request_id, 'geolocation', 35, 'Géolocalisation en cours...')
-                
-                geo_location = geo_service.get_location_info(latitude, longitude)
-                geo_summary = geo_service.get_location_summary_for_ai(geo_location)
-                
-                sse_manager.broadcast_progress(request_id, 'geolocation', 50, 'Géolocalisation terminée')
-                sse_manager.broadcast_result(request_id, 'geolocation', {
-                    'location_basic': geo_summary.get('location_basic', ''),
-                    'cultural_context': geo_summary.get('cultural_context', ''),
-                    'confidence': geo_location.confidence_score
-                })
+                if latitude is not None and longitude is not None:
+                    sse_manager.broadcast_progress(request_id, 'geolocation', 35, 'Géolocalisation en cours...')
+                    
+                    geo_location = geo_service.get_location_info(latitude, longitude)
+                    geo_summary = geo_service.get_location_summary_for_ai(geo_location)
+                    
+                    sse_manager.broadcast_progress(request_id, 'geolocation', 50, 'Géolocalisation terminée')
+                    sse_manager.broadcast_result(request_id, 'geolocation', {
+                        'location_basic': geo_summary.get('location_basic', ''),
+                        'cultural_context': geo_summary.get('cultural_context', ''),
+                        'confidence': geo_location.confidence_score
+                    })
+                else:
+                    # Pas de géolocalisation disponible
+                    sse_manager.broadcast_progress(request_id, 'geolocation', 50, 'Pas de géolocalisation')
+                    
+                    # Créer des objets vides
+                    from services.geo_service import GeoLocation
+                    geo_location = GeoLocation(
+                        latitude=0, 
+                        longitude=0,
+                        formatted_address="Lieu inconnu",
+                        confidence_score=0.0
+                    )
+                    geo_summary = {
+                        'location_basic': '',
+                        'cultural_context': '',
+                        'nearby_attractions': '',
+                        'geographic_context': ''
+                    }
+                    
+                    sse_manager.broadcast_result(request_id, 'geolocation', {
+                        'location_basic': 'Pas de localisation',
+                        'cultural_context': '',
+                        'confidence': 0.0
+                    })
                 
                 # Étape 4: Enrichissement culturel
                 cultural_enrichment = ""
-                if geo_location.confidence_score > 0.5 and geo_summary.get('cultural_context'):
+                if latitude is not None and longitude is not None and geo_location.confidence_score > 0.5 and geo_summary.get('cultural_context'):
                     sse_manager.broadcast_progress(request_id, 'cultural_enrichment', 55, 'Enrichissement culturel...')
                     
                     try:

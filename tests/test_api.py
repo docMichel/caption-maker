@@ -192,6 +192,61 @@ def main():
         print(f"\n{Colors.GREEN}Légende régénérée:{Colors.END}")
         print(f'"{regen_result["caption"]}"')
     
+    # 8. Test sans coordonnées GPS (synchrone)
+    print(f"\n{Colors.YELLOW}=== TEST SANS COORDONNÉES GPS ==={Colors.END}")
+
+    no_gps_result = test_endpoint("POST", "/api/ai/generate-caption", "Génération sans GPS", {
+        "asset_id": "test-no-gps-001",
+        "image_base64": image_base64,
+        # Pas de latitude/longitude
+        "language": "français",
+        "style": "descriptive"
+    })
+
+    if no_gps_result and no_gps_result.get('success'):
+        print(f"\n{Colors.GREEN}Légende sans géoloc générée:{Colors.END}")
+        print(f'"{no_gps_result["caption"]}"')
+        print(f"Note: Pas de contexte géographique")
+
+    # 9. Test sans coordonnées GPS (asynchrone)
+    print(f"\n{Colors.YELLOW}=== TEST ASYNC SANS GPS ==={Colors.END}")
+
+    request_id_no_gps = f"test-async-nogps-{int(time.time())}"
+
+    async_no_gps = test_endpoint("POST", "/api/ai/generate-caption-async", "Démarrage async sans GPS", {
+        "request_id": request_id_no_gps,
+        "asset_id": "test-nogps-002",
+        "image_base64": image_base64,
+        # Pas de latitude/longitude
+        "language": "english",
+        "style": "minimal"
+    })
+
+    if async_no_gps and async_no_gps.get('success'):
+        print(f"🎧 Écoute SSE sans GPS...")
+        sse_thread = threading.Thread(
+            target=listen_sse,
+            args=(request_id_no_gps, 30)
+        )
+        sse_thread.start()
+        sse_thread.join(timeout=35)
+
+    # 10. Test avec coordonnées invalides
+    print(f"\n{Colors.YELLOW}=== TEST COORDONNÉES INVALIDES ==={Colors.END}")
+
+    invalid_coords = test_endpoint("POST", "/api/ai/generate-caption", "Coordonnées invalides", {
+        "asset_id": "test-invalid-gps",
+        "image_base64": image_base64,
+        "latitude": 200,  # Invalide !
+        "longitude": -300, # Invalide !
+        "language": "français",
+        "style": "creative"
+    })
+
+    if invalid_coords is None or not invalid_coords.get('success'):
+        print(f"{Colors.GREEN}✅ Rejet correct des coordonnées invalides{Colors.END}")
+
+
     # 8. Info cache
     cache_info = test_endpoint("GET", "/api/ai/cache/info", "Informations cache")
     
