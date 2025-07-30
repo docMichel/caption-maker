@@ -133,7 +133,7 @@ def main():
     print(f"{Colors.GREEN}✅ Image encodée{Colors.END} ({len(image_base64)} caractères)")
     
     # 5. Test synchrone
-    '''    
+    
     print(f"\n{Colors.YELLOW}=== TEST GÉNÉRATION SYNCHRONE ==={Colors.END}")
     
     sync_result = test_endpoint("POST", "/api/ai/generate-caption", "Génération synchrone", {
@@ -150,9 +150,9 @@ def main():
         print(f'"{sync_result["caption"]}"')
         print(f"Confiance: {sync_result['confidence_score']:.2f}")
         print(f"Temps: {sync_result['generation_time']:.1f}s")
-    '''
+    
     # 6. Test asynchrone avec SSE
-    '''
+    
     print(f"\n{Colors.YELLOW}=== TEST GÉNÉRATION ASYNCHRONE ==={Colors.END}")
     
     request_id = f"test-async-{int(time.time())}"
@@ -175,9 +175,9 @@ def main():
         )
         sse_thread.start()
         sse_thread.join()
-    '''
+    
     # 7. Test régénération
-    '''
+    
     print(f"\n{Colors.YELLOW}=== TEST RÉGÉNÉRATION ==={Colors.END}")
     
     regen_result = test_endpoint("POST", "/api/ai/regenerate-final", "Régénération finale", {
@@ -191,7 +191,7 @@ def main():
     if regen_result and regen_result.get('success'):
         print(f"\n{Colors.GREEN}Légende régénérée:{Colors.END}")
         print(f'"{regen_result["caption"]}"')
-    '''
+    
     # 8. Info cache
     cache_info = test_endpoint("GET", "/api/ai/cache/info", "Informations cache")
     
