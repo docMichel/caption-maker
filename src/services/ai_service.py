@@ -109,14 +109,14 @@ class AIService:
         
         logger.info(f"🤖 AIService initialisé avec config: {self.config.export_config_summary()}")
     
-    def generate_caption(self, image_path: str, latitude: float, longitude: float,
+    def generate_caption(self, image_path: str, latitude: Optional[float], longitude: Optional[float],
                         language: str = 'français', style: str = 'creative') -> CaptionResult:
         """
         Génération complète de légende contextuelle
         
         Args:
             image_path: Chemin vers l'image à analyser
-            latitude, longitude: Coordonnées GPS
+            latitude, longitude: Coordonnées GPS (peuvent être None)
             language: Langue de génération (voir config pour langues supportées)
             style: Style de légende (voir config pour styles supportés)
             
@@ -141,7 +141,11 @@ class AIService:
         self.stats['languages_used'][language] = self.stats['languages_used'].get(language, 0) + 1
         self.stats['styles_used'][style] = self.stats['styles_used'].get(style, 0) + 1
         
-        logger.info(f"🎨 Génération légende pour {Path(image_path).name} ({latitude:.4f}, {longitude:.4f})")
+        # Log avec gestion des None
+        if latitude is not None and longitude is not None:
+            logger.info(f"🎨 Génération légende pour {Path(image_path).name} ({latitude:.4f}, {longitude:.4f})")
+        else:
+            logger.info(f"🎨 Génération légende pour {Path(image_path).name} (sans géolocalisation)")
         logger.info(f"   Paramètres: {language} / {style}")
         
         try:
@@ -489,9 +493,9 @@ class AIService:
             (prev_avg * (success_count - 1) + generation_time) / success_count
         )
     
-    def _handle_generation_error(self, error: Exception, language: str, latitude: float, longitude: float,
-                                start_time: float, processing_steps: List[str], 
-                                prompts_used: Dict[str, str]) -> CaptionResult:
+    def _handle_generation_error(self, error: Exception, language: str, latitude: Optional[float], 
+                                longitude: Optional[float], start_time: float, 
+                                processing_steps: List[str], prompts_used: Dict[str, str]) -> CaptionResult:
         """Gérer les erreurs de génération avec fallback intelligent"""
         self.stats['failed_generations'] += 1
         error_msg = f"Erreur génération légende: {error}"
@@ -518,8 +522,8 @@ class AIService:
             error_messages=[error_msg]
         )
     
-    def _save_failed_generation(self, error_msg: str, language: str, latitude: float, 
-                              longitude: float, prompts_used: Dict[str, str]):
+    def _save_failed_generation(self, error_msg: str, language: str, latitude: Optional[float], 
+                              longitude: Optional[float], prompts_used: Dict[str, str]):
         """Sauvegarder les générations échouées pour debug"""
         try:
             log_dir = Path(__file__).parent.parent.parent / "logs"
@@ -531,7 +535,7 @@ class AIService:
                 'timestamp': datetime.now().isoformat(),
                 'error': error_msg,
                 'language': language,
-                'coordinates': [latitude, longitude],
+                'coordinates': [latitude, longitude] if latitude and longitude else None,
                 'prompts_used': prompts_used
             }
             
