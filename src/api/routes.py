@@ -10,6 +10,7 @@ from flask import Blueprint, request, jsonify
 import logging
 import time
 from typing import Dict, Any
+from pathlib import Path  # AJOUT DE L'IMPORT MANQUANT
 
 # Import des services et utilitaires
 from src.services.ai_service import AIService
@@ -138,7 +139,7 @@ def generate_caption():
         if validation_error:
             return validation_error
         
-        # Ajoute cette partie pour gérer les coordonnées manquantes
+        # Gérer les coordonnées manquantes
         if latitude is None or longitude is None:
             logger.info(f"🎨 Génération légende SANS géolocalisation pour {asset_id}")
             # Utiliser des valeurs par défaut ou None
@@ -163,11 +164,6 @@ def generate_caption():
                 'cached': True,
                 **cached_result
             })
-                
-        if latitude is not None and longitude is not None:
-            logger.info(f"🎨 Génération légende pour {Path(image_path).name} ({latitude:.4f}, {longitude:.4f})")
-        else:
-            logger.info(f"🎨 Génération légende pour {Path(image_path).name} (sans géolocalisation)")        
        
         # Sauvegarder l'image temporairement
         image_processor = get_image_processor()
@@ -272,16 +268,11 @@ def validate_generation_params(asset_id, image_base64, latitude, longitude):
             'code': 'MISSING_IMAGE'
         }), 400
     
+    # Si pas de coordonnées, c'est OK maintenant
     if latitude is None or longitude is None:
         return None
-    '''
-        return jsonify({
-            'success': False,
-            'error': 'Coordonnées GPS requises (latitude, longitude)',
-            'code': 'MISSING_COORDINATES'
-        }), 400
-    '''
-    # Valider les coordonnées
+    
+    # Si coordonnées fournies, les valider
     try:
         lat = float(latitude)
         lon = float(longitude)
