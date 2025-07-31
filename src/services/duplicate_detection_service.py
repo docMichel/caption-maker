@@ -16,6 +16,9 @@ from dataclasses import dataclass
 from pathlib import Path
 import numpy as np
 
+# Import du service de qualité
+from .image_quality_service import ImageQualityService
+
 logger = logging.getLogger(__name__)
 
 # Import optionnel de sentence-transformers
@@ -37,6 +40,8 @@ class ImageSimilarity:
     date: str
     thumbnail_url: str
     is_primary: bool = False
+    quality_score: float = 0.0  # Score de qualité global
+    blur_score: float = 0.0     # Score de flou (0=net, 100=flou)
 
 @dataclass
 class DuplicateGroup:
@@ -71,6 +76,9 @@ class DuplicateDetectionService:
         
         # Cache des embeddings en mémoire
         self.embeddings_cache = {}
+        
+        # Service de qualité d'image
+        self.quality_service = ImageQualityService()
         
         # Statistiques
         self.stats = {
@@ -322,12 +330,10 @@ class DuplicateDetectionService:
                         is_primary=(k == 0)
                     ))
                 
-                    group = DuplicateGroup(
-                        group_id=f"group_{len(groups)}",
-                        images=group_images,
-                        similarity_avg=0.0,  # Sera calculé automatiquement dans __post_init__
-                        total_images=len(group_images)
-                    )
+                group = DuplicateGroup(
+                    group_id=f"group_{len(groups)}",
+                    images=group_images
+                )
                 groups.append(group)
             
             if progress_callback:
@@ -386,3 +392,68 @@ class DuplicateDetectionService:
         #     cache_file.unlink()
         
         logger.info("🗑️ Cache embeddings vidé")
+    
+    def _set_best_image_as_primary(self, group: DuplicateGroup):
+        """
+        Analyser la qualité des images du groupe et définir la meilleure comme principale
+        
+        Args:
+            group: Groupe de doublons à analyser
+        """
+        if len(group.images) <= 1:
+            return
+        
+        try:
+            # Analyser la qualité de chaque image
+            quality_scores = []
+            
+            for img in group.images:
+                # Trouver le chemin de l'image
+                # TODO: Adapter selon comment vous stockez les chemins
+                image_path = None
+                
+                # Chercher dans test_images d'abord
+                test_path = Path.home() / "caption-maker" / "test_images" / img.filename
+                if test_path.exists():
+                    image_path = str(test_path)
+                
+                if image_path:
+                    metrics = self.quality_service.analyze_image(image_path)
+                    quality_scores.append({
+                        'image': img,
+                        'score': metrics.overall_score,
+                        'sharpness': metrics.sharpness_score,
+                        'metrics': metrics
+                    })
+                else:
+                    # Score par défaut si on ne trouve pas l'image
+                    quality_scores.append({
+                        'image': img,
+                        'score': 50.0,
+                        'sharpness': 50.0,
+                        'metrics': None
+                    })
+            
+            # Trier par score de qualité (meilleur en premier)
+            quality_scores.sort(key=lambda x: (x['score'], x['sharpness']), reverse=True)
+            
+            # Réorganiser les images dans le groupe
+            new_images = []
+            for i, item in enumerate(quality_scores):
+                img = item['image']
+                img.is_primary = (i == 0)  # La première est la meilleure
+                
+                # Ajouter les infos de qualité dans les métadonnées
+                if item['metrics']:
+                    img.quality_score = item['score']
+                    img.blur_score = item['metrics'].blur_score
+                
+                new_images.append(img)
+            
+            group.images = new_images
+            
+            logger.info(f"📸 Groupe {group.group_id}: Meilleure image = {new_images[0].filename} (score: {quality_scores[0]['score']:.1f})")
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur analyse qualité pour groupe {group.group_id}: {e}")
+            # En cas d'erreur, garder l'ordre original
