@@ -439,16 +439,26 @@ class AIService:
         return response.get('response', '').strip() if response else None
     
     def _call_ollama_with_retry(self, endpoint: str, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Appel Ollama avec retry automatique"""
+        """Appel Ollama avec retry automatique et timeout"""
         for attempt in range(self.max_retries):
             try:
+                # Timeout plus court pour détecter les blocages
+                timeout = min(self.ollama_timeout, 30)  # Max 30s par tentative
+                
                 response = requests.post(
                     f"{self.ollama_base_url}/api/{endpoint}",
                     json=payload,
-                    timeout=self.ollama_timeout
+                    timeout=timeout
                 )
                 response.raise_for_status()
                 return response.json()
+                
+            except requests.Timeout:
+                logger.warning(f"⏱️ Timeout Ollama tentative {attempt + 1}/{self.max_retries} (après {timeout}s)")
+                if attempt == self.max_retries - 1:
+                    logger.error(f"❌ Timeout définitif Ollama après {self.max_retries} tentatives")
+                    raise TimeoutError(f"Ollama ne répond pas après {timeout}s")
+                time.sleep(2)  # Attendre avant retry
                 
             except requests.RequestException as e:
                 logger.warning(f"Tentative {attempt + 1}/{self.max_retries} échouée: {e}")

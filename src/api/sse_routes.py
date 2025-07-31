@@ -449,13 +449,13 @@ def process_generation_async(request_id: str, data: Dict[str, Any], app):
                 except Exception:
                     pass
                     
+ 
+        except TimeoutError as e:
+            import traceback
+            logger.error(f"⏱️ Timeout génération async: {e}")
+            sse_manager.broadcast_error(request_id, f"Timeout: {str(e)}", "TIMEOUT")
         except Exception as e:
             import traceback
             logger.error(f"❌ Erreur génération async: {e}")
             logger.error(f"Traceback complet:\n{traceback.format_exc()}")
             sse_manager.broadcast_error(request_id, str(e))
-        '''
-        except Exception as e:
-            logger.error(f"❌ Erreur génération async: {e}")
-            sse_manager.broadcast_error(request_id, str(e))
-        '''
