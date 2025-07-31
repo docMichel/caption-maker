@@ -117,6 +117,18 @@ def init_services(app):
         else:
             logger.info("ℹ️  ImmichAPIService non configuré (pas de clé API)")
         
+
+        # Service de détection de doublons (optionnel)
+        try:
+            duplicate_service = DuplicateDetectionService()
+            if duplicate_service.is_available():
+                services['duplicate_service'] = duplicate_service
+                logger.info("✅ DuplicateDetectionService initialisé (CLIP disponible)")
+            else:
+                logger.warning("⚠️  DuplicateDetectionService: CLIP non disponible")
+        except Exception as e:
+            logger.warning(f"⚠️  DuplicateDetectionService non disponible: {e}")
+            
         # Stocker les services dans la config Flask
         app.config['SERVICES'] = services
         
