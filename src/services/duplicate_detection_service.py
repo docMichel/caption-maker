@@ -333,6 +333,8 @@ class DuplicateDetectionService:
                 group = DuplicateGroup(
                     group_id=f"group_{len(groups)}",
                     images=group_images
+                    similarity_avg=0.0,
+                    total_images=len(group_images)
                 )
                 groups.append(group)
             
