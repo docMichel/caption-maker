@@ -23,12 +23,13 @@ from src.config.server_config import ServerConfig
 
 # Import des blueprints
 from src.api import api_bp, sse_bp, admin_bp
+from src.api.duplicate_routes import duplicate_bp
 
 # Import des services
 from src.services.geo_service import GeoService
 from src.services.ai_service import AIService
 from src.services.immich_api_service import ImmichAPIService
-from flask import Flask
+from src.services.duplicate_detection_service import DuplicateDetectionService
 from flask import Flask
 from flask_cors import CORS
 import logging
