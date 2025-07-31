@@ -67,3 +67,10 @@ instance/
 .env
 .env.local
 .env.production
+
+#images
+test_images/*.jpg
+test_images/*.jpeg
+test_images/*.png
+test.jpg
+!test_images/README.md
