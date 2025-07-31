@@ -193,66 +193,98 @@ def find_similar_from_upload():
 @duplicate_bp.route('/duplicates/analyze-album/<album_id>', methods=['POST'])
 def analyze_album_duplicates(album_id):
     """Analyser un album complet pour trouver les doublons (SSE)"""
+    logger.info(f"📸 Analyse album {album_id}")
+    
     def generate():
         """Générateur SSE pour l'analyse"""
-        sse_manager = get_sse_manager()
+        # IMPORTANT: Capturer le contexte Flask pour le générateur
+        app = current_app._get_current_object()
         
-        try:
-            yield f"data: {json.dumps({'event': 'start', 'data': {'album_id': album_id}})}\n\n"
-            
-            # Récupérer les services
-            services = current_app.config.get('SERVICES', {})
-            duplicate_service = services.get('duplicate_service')
-            
-            if not duplicate_service or not duplicate_service.is_available():
-                yield f"data: {json.dumps({'event': 'error', 'data': {'error': 'Service non disponible'}})}\n\n"
-                return
-            
-            # TODO: Récupérer les images de l'album depuis Immich
-            # Pour le moment, utiliser des données de test
-            images = [
-                {
-                    'id': f'test-{i:03d}',
-                    'filename': f'test{i}.jpg',
-                    'date': f'2024-01-01T{12+i}:00:00',
-                    'path': f'/tmp/test_images/test{i}.jpg'
-                }
-                for i in range(1, 4)
-            ]
-            
-            total = len(images)
-            yield f"data: {json.dumps({'event': 'progress', 'data': {'progress': 0, 'details': f'Analyse de {total} images'}})}\n\n"
-            
-            # Callback pour le progress
-            def progress_callback(progress, details):
-                yield f"data: {json.dumps({'event': 'progress', 'data': {'progress': progress, 'details': details}})}\n\n"
-            
-            # Analyser l'album
-            data = request.get_json() if request.is_json else {}
-            threshold = data.get('threshold', 0.85)
-            
-            groups = duplicate_service.analyze_album_for_duplicates(
-                images,
-                threshold=threshold,
-                progress_callback=progress_callback
-            )
-            
-            # Convertir les groupes en dict
-            groups_dict = []
-            for group in groups:
-                group_dict = {
-                    'group_id': group.group_id,
-                    'similarity_avg': group.similarity_avg,
-                    'images': [img.__dict__ for img in group.images]
-                }
-                groups_dict.append(group_dict)
-            
-            # Résultat final
-            yield f"data: {json.dumps({'event': 'complete', 'data': {'groups': groups_dict, 'total_groups': len(groups)}})}\n\n"
-            
-        except Exception as e:
-            logger.error(f"❌ Erreur analyse album: {e}")
-            yield f"data: {json.dumps({'event': 'error', 'data': {'error': str(e)}})}\n\n"
+        with app.app_context():
+            try:
+                yield f"data: {json.dumps({'event': 'start', 'data': {'album_id': album_id}})}\n\n"
+                
+                # Récupérer les services
+                services = app.config.get('SERVICES', {})
+                duplicate_service = services.get('duplicate_service')
+                
+                if not duplicate_service or not duplicate_service.is_available():
+                    yield f"data: {json.dumps({'event': 'error', 'data': {'error': 'Service non disponible'}})}\n\n"
+                    return
+                
+                # Utiliser les images de test
+                test_images_dir = Path.home() / "caption-maker" / "test_images"
+                images = []
+                
+                if test_images_dir.exists():
+                    for i, img_file in enumerate(test_images_dir.glob("*.jpg")):
+                        images.append({
+                            'id': f'test-{i:03d}',
+                            'filename': img_file.name,
+                            'date': f'2024-01-01T{12+i%24}:00:00',
+                            'path': str(img_file)
+                        })
+                
+                if not images:
+                    yield f"data: {json.dumps({'event': 'error', 'data': {'error': 'Aucune image trouvée'}})}\n\n"
+                    return
+                
+                total = len(images)
+                yield f"data: {json.dumps({'event': 'progress', 'data': {'progress': 0, 'details': f'Analyse de {total} images'}})}\n\n"
+                
+                # Collecter les updates de progress
+                progress_updates = []
+                
+                def progress_callback(progress, details):
+                    # Stocker pour envoi différé
+                    progress_updates.append({
+                        'progress': progress,
+                        'details': details
+                    })
+                
+                # Analyser l'album
+                data = request.get_json() if request.is_json else {}
+                threshold = data.get('threshold', 0.85)
+                
+                # Lancer l'analyse
+                groups = duplicate_service.analyze_album_for_duplicates(
+                    images,
+                    threshold=threshold,
+                    progress_callback=progress_callback
+                )
+                
+                # Envoyer tous les progress updates collectés
+                for update in progress_updates:
+                    yield f"data: {json.dumps({'event': 'progress', 'data': update})}\n\n"
+                
+                # Convertir les groupes en dict
+                groups_dict = []
+                for group in groups:
+                    group_dict = {
+                        'group_id': group.group_id,
+                        'similarity_avg': group.similarity_avg,
+                        'total_images': group.total_images,
+                        'images': [
+                            {
+                                'asset_id': img.asset_id,
+                                'similarity': img.similarity,
+                                'filename': img.filename,
+                                'date': img.date,
+                                'is_primary': img.is_primary
+                            }
+                            for img in group.images
+                        ]
+                    }
+                    groups_dict.append(group_dict)
+                
+                # Résultat final
+                yield f"data: {json.dumps({'event': 'complete', 'data': {'groups': groups_dict, 'total_groups': len(groups)}})}\n\n"
+                
+            except Exception as e:
+                logger.error(f"❌ Erreur analyse album: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+                yield f"data: {json.dumps({'event': 'error', 'data': {'error': str(e)}})}\n\n"
     
     return Response(generate(), mimetype='text/event-stream', headers={
         'Cache-Control': 'no-cache',
