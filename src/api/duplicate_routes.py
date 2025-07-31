@@ -195,11 +195,15 @@ def analyze_album_duplicates(album_id):
     """Analyser un album complet pour trouver les doublons (SSE)"""
     logger.info(f"📸 Analyse album {album_id}")
     
+    # IMPORTANT: Capturer l'app ICI, AVANT le générateur
+    app = current_app._get_current_object()
+    
+    # Récupérer les données de la requête ICI aussi
+    request_data = request.get_json() if request.is_json else {}
+    threshold = request_data.get('threshold', 0.85)
+    
     def generate():
         """Générateur SSE pour l'analyse"""
-        # IMPORTANT: Capturer le contexte Flask pour le générateur
-        app = current_app._get_current_object()
-        
         with app.app_context():
             try:
                 yield f"data: {json.dumps({'event': 'start', 'data': {'album_id': album_id}})}\n\n"
@@ -241,10 +245,6 @@ def analyze_album_duplicates(album_id):
                         'progress': progress,
                         'details': details
                     })
-                
-                # Analyser l'album
-                data = request.get_json() if request.is_json else {}
-                threshold = data.get('threshold', 0.85)
                 
                 # Lancer l'analyse
                 groups = duplicate_service.analyze_album_for_duplicates(
@@ -291,7 +291,6 @@ def analyze_album_duplicates(album_id):
         'Connection': 'keep-alive',
         'X-Accel-Buffering': 'no'
     })
-
 
 @duplicate_bp.route('/duplicates/create-group', methods=['POST'])
 def create_duplicate_group():
