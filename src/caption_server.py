@@ -72,6 +72,7 @@ def create_app():
     app.register_blueprint(api_bp, url_prefix='/api')
     app.register_blueprint(sse_bp, url_prefix='/api')
     app.register_blueprint(admin_bp, url_prefix='/api')
+    app.register_blueprint(duplicate_bp, url_prefix='/api')
     
     # Stocker le temps de démarrage
     app.config['START_TIME'] = time.time()
