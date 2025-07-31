@@ -82,8 +82,8 @@ def find_similar_images():
         
         # TODO: Implémenter la récupération du chemin physique de l'asset
         # Pour le moment, utiliser un chemin de test
-        source_path = f"/tmp/test_images/{asset_id}.jpg"  # À remplacer
-        
+        #source_path = f"/tmp/test_images/{asset_id}.jpg"  # À remplacer
+        source_path = Path.home() / "caption-maker" / "test_images" / f"{asset_id}.jpg"
         # TODO: Récupérer les candidats depuis Immich
         # Pour le moment, utiliser des données de test
         candidates = [
