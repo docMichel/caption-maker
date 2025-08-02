@@ -75,7 +75,7 @@ class ImmichImageLoader:
             url = f"{self.proxy_url}/api/assets/{asset_id}/original"
         elif size == 'thumbnail':
             # Pour les miniatures
-            url = f"{self.proxy_url}/api/assets/thumbnail/{asset_id}"
+            url = f"{self.proxy_url}/api/assets{asset_id}/thumbnail"
         else:
             # Pour preview (taille moyenne)
             url = f"{self.proxy_url}/api/assets/thumbnail/{asset_id}?size=preview"

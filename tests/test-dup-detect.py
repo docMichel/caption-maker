@@ -43,9 +43,7 @@ def test_immich_connection():
     
     # Test 1: Server info
     try:
-        response = requests.get(f"{SERVER_URL}/api/health")
-
-#        response = requests.get(f"{IMMICH_PROXY_URL}/api/server-info/version", headers=headers)
+        response = requests.get(f"{IMMICH_PROXY_URL}/api/server-info/version", headers=headers)
         if response.status_code == 200:
             print(f"{Colors.GREEN}✅ Connexion Immich OK{Colors.END}")
             print(f"Version: {response.json()}")
@@ -64,14 +62,27 @@ def test_asset_endpoints(asset_id):
     
     headers = {'x-api-key': IMMICH_API_KEY}
     
-    # Endpoints à tester
+    # Endpoints à tester basés sur la doc Immich
     endpoints = [
+        # Info asset
         f"/api/assets/{asset_id}",
-        f"/api/assets/thumbnail/{asset_id}?size=preview",
+        
+        # Tailles selon la doc (thumbnail, preview, fullsize)
         f"/api/assets/{asset_id}/thumbnail",
-        f"/api/assets/thumbnail/{asset_id}",
-        f"/api/assets/file/{asset_id}",
-        f"/api/assets/download/{asset_id}"
+        f"/api/assets/{asset_id}/thumbnail?size=thumbnail",
+        f"/api/assets/{asset_id}/thumbnail?size=preview", 
+        f"/api/assets/{asset_id}/thumbnail?size=fullsize",
+        
+        # Variantes possibles
+        f"/api/assets/{asset_id}/preview",
+        f"/api/assets/{asset_id}/fullsize",
+        f"/api/assets/{asset_id}/original",
+        
+        # Anciens formats (au cas où)
+        f"/api/asset/thumbnail/{asset_id}",
+        f"/api/asset/thumbnail/{asset_id}?size=preview",
+        f"/api/asset/file/{asset_id}",
+        f"/api/asset/download/{asset_id}"
     ]
     
     for endpoint in endpoints:
@@ -83,7 +94,7 @@ def test_asset_endpoints(asset_id):
             if response.status_code == 200:
                 print(f"{Colors.GREEN}✅ OK{Colors.END}")
                 # Si c'est un endpoint d'info, afficher les données
-                if '/api/assets/' in endpoint and 'thumbnail' not in endpoint:
+                if '/api/asset/' in endpoint and 'thumbnail' not in endpoint:
                     data = response.json()
                     print(f"  Type: {data.get('type', 'N/A')}")
                     print(f"  Filename: {data.get('originalFileName', 'N/A')}")
@@ -98,18 +109,22 @@ def get_asset_image(asset_id, use_thumbnail=True):
     """Récupérer une image depuis Immich"""
     headers = {'x-api-key': IMMICH_API_KEY}
     
-    # Essayer différents endpoints
+    # Essayer différents endpoints selon la doc Immich
     if use_thumbnail:
         endpoints = [
+            # Formats selon la doc (thumbnail, preview, fullsize)
+            f"/api/assets/{asset_id}/thumbnail?size=preview",
+            f"/api/assets/{asset_id}/thumbnail?size=thumbnail",
             f"/api/assets/{asset_id}/thumbnail",
-            f"/api/assets/thumbnail/{asset_id}",
-            f"/api/assets/thumbnail/{asset_id}?format=WEBP&size=preview"
         ]
     else:
         endpoints = [
-            f"/api/assets/file/{asset_id}",
-            f"/api/assets/download/{asset_id}",
-            f"/api/assets/{asset_id}/original"
+            # Pour l'image complète
+            f"/api/assets/{asset_id}/thumbnail?size=fullsize",
+            f"/api/assets/{asset_id}/original",
+            f"/api/assets/{asset_id}/fullsize",
+            f"/api/asset/file/{asset_id}",
+            f"/api/asset/download/{asset_id}"
         ]
     
     for endpoint in endpoints:
@@ -150,7 +165,7 @@ def test_duplicate_detection_basic():
     for asset_id in test_assets:
         headers = {'x-api-key': IMMICH_API_KEY}
         response = requests.get(
-            f"{IMMICH_PROXY_URL}/api/assets/{asset_id}",
+            f"{IMMICH_PROXY_URL}/api/asset/{asset_id}",
             headers=headers
         )
         
