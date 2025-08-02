@@ -5,6 +5,9 @@ Script de test pour la détection de doublons avec le serveur Caption Maker
 Teste différents endpoints et configurations
 """
 
+import os
+import sys
+from dotenv import load_dotenv
 import requests
 import json
 import base64
@@ -12,10 +15,13 @@ import time
 from pathlib import Path
 import logging
 
-# Configuration
-SERVER_URL = "http://localhost:5001"  # ou 5000 selon votre config
-IMMICH_PROXY_URL = "http://localhost:3001"
-IMMICH_API_KEY = "your-api-key-here"  # Remplacez par votre clé
+# Charger les variables d'environnement
+load_dotenv()
+
+# Configuration depuis .env ou valeurs par défaut
+SERVER_URL = os.getenv('SERVER_URL', 'http://localhost:5001')
+IMMICH_PROXY_URL = os.getenv('IMMICH_PROXY_URL', 'http://localhost:3001')
+IMMICH_API_KEY = os.getenv('IMMICH_API_KEY', '')
 
 # Configuration logging
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
@@ -343,9 +349,17 @@ def main():
     print(f"{Colors.BLUE}🧪 Test Détection de Doublons - Caption Maker{Colors.END}")
     print("=" * 60)
     
+    # Afficher la configuration
+    print(f"\n{Colors.YELLOW}Configuration:{Colors.END}")
+    print(f"  SERVER_URL: {SERVER_URL}")
+    print(f"  IMMICH_PROXY_URL: {IMMICH_PROXY_URL}")
+    print(f"  IMMICH_API_KEY: {'✅ Configurée' if IMMICH_API_KEY else '❌ Non configurée'}")
+    
     # Vérifier la clé API
-    if IMMICH_API_KEY == "your-api-key-here":
-        print(f"{Colors.RED}⚠️  Configurez IMMICH_API_KEY dans le script!{Colors.END}")
+    if not IMMICH_API_KEY:
+        print(f"\n{Colors.RED}⚠️  IMMICH_API_KEY non trouvée!{Colors.END}")
+        print("Vérifiez votre fichier .env")
+        print("Il devrait contenir: IMMICH_API_KEY=votre-clé-ici")
         return
     
     # 1. Tester la connexion Immich
