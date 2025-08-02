@@ -72,13 +72,13 @@ class ImmichImageLoader:
         # Construire l'URL selon le type
         if size == 'original':
             # Pour l'original, utiliser le endpoint de téléchargement
-            url = f"{self.proxy_url}/api/asset/download/{asset_id}"
+            url = f"{self.proxy_url}/api/assets/download/{asset_id}"
         elif size == 'thumbnail':
             # Pour les miniatures
-            url = f"{self.proxy_url}/api/asset/thumbnail/{asset_id}"
+            url = f"{self.proxy_url}/api/assets/thumbnail/{asset_id}"
         else:
             # Pour preview (taille moyenne)
-            url = f"{self.proxy_url}/api/asset/thumbnail/{asset_id}?size=preview"
+            url = f"{self.proxy_url}/api/assets/thumbnail/{asset_id}?size=preview"
         
         logger.debug(f"📥 Téléchargement: {url}")
         

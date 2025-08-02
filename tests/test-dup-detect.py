@@ -66,12 +66,12 @@ def test_asset_endpoints(asset_id):
     
     # Endpoints à tester
     endpoints = [
-        f"/api/asset/{asset_id}",
-        f"/api/asset/thumbnail/{asset_id}?size=preview",
+        f"/api/assets/{asset_id}",
+        f"/api/assets/thumbnail/{asset_id}?size=preview",
         f"/api/assets/{asset_id}/thumbnail",
-        f"/api/asset/thumbnail/{asset_id}",
-        f"/api/asset/file/{asset_id}",
-        f"/api/asset/download/{asset_id}"
+        f"/api/assets/thumbnail/{asset_id}",
+        f"/api/assets/file/{asset_id}",
+        f"/api/assets/download/{asset_id}"
     ]
     
     for endpoint in endpoints:
@@ -83,7 +83,7 @@ def test_asset_endpoints(asset_id):
             if response.status_code == 200:
                 print(f"{Colors.GREEN}✅ OK{Colors.END}")
                 # Si c'est un endpoint d'info, afficher les données
-                if '/api/asset/' in endpoint and 'thumbnail' not in endpoint:
+                if '/api/assets/' in endpoint and 'thumbnail' not in endpoint:
                     data = response.json()
                     print(f"  Type: {data.get('type', 'N/A')}")
                     print(f"  Filename: {data.get('originalFileName', 'N/A')}")
@@ -102,13 +102,13 @@ def get_asset_image(asset_id, use_thumbnail=True):
     if use_thumbnail:
         endpoints = [
             f"/api/assets/{asset_id}/thumbnail",
-            f"/api/asset/thumbnail/{asset_id}",
-            f"/api/asset/thumbnail/{asset_id}?format=WEBP&size=preview"
+            f"/api/assets/thumbnail/{asset_id}",
+            f"/api/assets/thumbnail/{asset_id}?format=WEBP&size=preview"
         ]
     else:
         endpoints = [
-            f"/api/asset/file/{asset_id}",
-            f"/api/asset/download/{asset_id}",
+            f"/api/assets/file/{asset_id}",
+            f"/api/assets/download/{asset_id}",
             f"/api/assets/{asset_id}/original"
         ]
     
@@ -150,7 +150,7 @@ def test_duplicate_detection_basic():
     for asset_id in test_assets:
         headers = {'x-api-key': IMMICH_API_KEY}
         response = requests.get(
-            f"{IMMICH_PROXY_URL}/api/asset/{asset_id}",
+            f"{IMMICH_PROXY_URL}/api/assets/{asset_id}",
             headers=headers
         )
         
