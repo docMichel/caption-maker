@@ -10,9 +10,16 @@ from flask import Blueprint, request, jsonify, Response, current_app
 import logging
 import json
 import time
-from typing import Dict, Any, List
+import requests
+from typing import Dict, List
 from pathlib import Path
 import tempfile
+
+# Import du service de détection
+from src.services.duplicate_detection_service import DuplicateDetectionService
+from src.config.server_config import ServerConfig
+
+logger = logging.getLogger(__name__)
 
 # Import du service de détection
 from src.utils.image_utils import get_image_processor
@@ -22,6 +29,61 @@ logger = logging.getLogger(__name__)
 
 # Créer le blueprint
 duplicate_bp = Blueprint('duplicates', __name__)
+
+
+
+# Ajouter cette classe au début de duplicate_routes.py, après les imports
+
+class ImmichImageLoader:
+    """Classe pour charger les images depuis Immich"""
+    
+    def __init__(self, proxy_url: str, api_key: str):
+        self.proxy_url = proxy_url.rstrip('/')
+        self.api_key = api_key
+        self.headers = {'x-api-key': api_key}
+        self.temp_dir = Path(tempfile.gettempdir()) / 'duplicate_detection'
+        self.temp_dir.mkdir(exist_ok=True)
+    
+    def download_image(self, asset_id: str, size: str = 'preview') -> Path:
+        """
+        Télécharger une image depuis Immich
+        
+        Args:
+            asset_id: ID de l'asset Immich
+            size: 'thumbnail', 'preview' ou 'original'
+        
+        Returns:
+            Chemin vers le fichier temporaire
+        """
+        # Utiliser le cache local si disponible
+        cache_file = self.temp_dir / f"{asset_id}_{size}.jpg"
+        if cache_file.exists() and cache_file.stat().st_mtime > time.time() - 3600:
+            return cache_file
+        
+        # Télécharger depuis Immich
+        if size == 'original':
+            url = f"{self.proxy_url}/api/assets/{asset_id}/original"
+        else:
+            url = f"{self.proxy_url}/api/assets/{asset_id}/thumbnail?size={size}"
+        
+        try:
+            response = requests.get(url, headers=self.headers, timeout=30)
+            response.raise_for_status()
+            
+            # Sauvegarder dans le cache
+            cache_file.write_bytes(response.content)
+            return cache_file
+            
+        except Exception as e:
+            logger.error(f"Erreur téléchargement {asset_id}: {e}")
+            return None
+    
+    def cleanup_old_cache(self, max_age_hours: int = 24):
+        """Nettoyer les vieux fichiers du cache"""
+        current_time = time.time()
+        for file_path in self.temp_dir.glob("*.jpg"):
+            if current_time - file_path.stat().st_mtime > max_age_hours * 3600:
+                file_path.unlink()
 
 
 @duplicate_bp.route('/duplicates/status', methods=['GET'])
