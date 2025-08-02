@@ -48,12 +48,19 @@ def test_find_similar_by_ids():
         if response.status_code == 200:
             result = response.json()
             print("✅ Succès!")
+            
+            # Afficher la structure complète pour debug
+            print("\nStructure de la réponse:")
+            print(json.dumps(result, indent=2))
+            
+            # Essayer d'afficher les groupes si ils existent
             if result.get('groups'):
-                print(f"Groupes trouvés: {len(result['groups'])}")
-                for g in result['groups']:
-                    print(f"  - Groupe: {len(g['images'])} images, similarité: {g['similarity']:.2%}")
-            else:
-                print("Aucun doublon trouvé")
+                print(f"\nGroupes trouvés: {len(result['groups'])}")
+                for i, g in enumerate(result['groups']):
+                    print(f"\n  Groupe {i+1}:")
+                    # Afficher toutes les clés disponibles
+                    for key, value in g.items():
+                        print(f"    {key}: {value}")
         else:
             print(f"❌ Erreur: {response.text[:200]}")
             
