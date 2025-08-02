@@ -55,72 +55,132 @@ def get_duplicate_status():
 
 
 @duplicate_bp.route('/duplicates/find-similar', methods=['POST'])
-def find_similar_images():
-    """Trouver les images similaires à partir d'un asset ID"""
+def find_similar():
+    """Trouver les doublons UNIQUEMENT parmi les images sélectionnées"""
     try:
-        data = request.get_json()
-        asset_id = data.get('asset_id')
-        threshold = data.get('threshold', 0.85)
-        time_window = data.get('time_window', 24)
+        data = request.json
+        asset_ids = data.get('asset_ids', [])
+        threshold = float(data.get('threshold', 0.85))
         
-        if not asset_id:
+        if not asset_ids:
             return jsonify({
                 'success': False,
-                'error': 'asset_id requis'
+                'error': 'Aucune image sélectionnée'
             }), 400
         
-        # Récupérer les services
-        services = current_app.config.get('SERVICES', {})
-        duplicate_service = services.get('duplicate_service')
-        immich_service = services.get('immich_service')
+        logger.info(f"🔍 Recherche doublons parmi {len(asset_ids)} images sélectionnées")
         
-        if not duplicate_service or not duplicate_service.is_available():
+        # Récupérer le service depuis current_app
+        duplicate_service = current_app.config.get('SERVICES', {}).get('duplicate_service')
+        if not duplicate_service:
+            # Créer une instance temporaire si pas dans SERVICES
+            duplicate_service = DuplicateDetectionService()
+        
+        # Initialiser le loader Immich
+        immich_loader = ImmichImageLoader(
+            current_app.config.get('IMMICH_PROXY_URL', ServerConfig.IMMICH_PROXY_URL),
+            current_app.config.get('IMMICH_API_KEY', ServerConfig.IMMICH_API_KEY)
+        )
+        
+        # Nettoyer le cache
+        immich_loader.cleanup_old_cache()
+        
+        # Télécharger UNIQUEMENT les images sélectionnées
+        images_data = []
+        download_errors = 0
+        
+        for i, asset_id in enumerate(asset_ids):
+            image_path = immich_loader.download_image(asset_id, 'preview')
+            
+            if image_path:
+                images_data.append({
+                    'id': asset_id,
+                    'path': str(image_path),
+                    'filename': f"IMG_{asset_id[:8]}.jpg",
+                    'date': '2024-01-01T00:00:00',  # TODO: récupérer depuis Immich si possible
+                    'thumbnail_url': f"/image-proxy.php?id={asset_id}&type=thumbnail"
+                })
+            else:
+                download_errors += 1
+                logger.warning(f"Impossible de télécharger {asset_id}")
+            
+            # Log de progression
+            if i % 5 == 0:
+                logger.info(f"Téléchargement: {i+1}/{len(asset_ids)}")
+        
+        if not images_data:
             return jsonify({
                 'success': False,
-                'error': 'Service de détection non disponible'
-            }), 503
+                'error': 'Impossible de télécharger les images'
+            }), 500
         
-        # TODO: Implémenter la récupération du chemin physique de l'asset
-        # Pour le moment, utiliser un chemin de test
-        #source_path = f"/tmp/test_images/{asset_id}.jpg"  # À remplacer
-        source_path = Path.home() / "caption-maker" / "test_images" / f"{asset_id}.jpg"
-        # TODO: Récupérer les candidats depuis Immich
-        # Pour le moment, utiliser des données de test
-        candidates = [
-            {
-                'id': 'test-001',
-                'filename': 'test1.jpg',
-                'date': '2024-01-01T12:00:00',
-                'path': '/tmp/test_images/test1.jpg',
-                'thumbnail_url': f'/api/assets/test-001/thumbnail'
-            }
-        ]
+        logger.info(f"✅ {len(images_data)} images téléchargées sur {len(asset_ids)}")
         
-        # Trouver les images similaires
-        similar_images = duplicate_service.find_similar_images(
-            source_path, 
-            candidates,
-            threshold=threshold,
-            time_window_hours=time_window
+        # Analyser UNIQUEMENT ces images entre elles
+        groups = duplicate_service.analyze_selection_only(
+            images_data,
+            threshold=threshold
         )
+        
+        # Pour chaque groupe, déterminer la meilleure image
+        for group in groups:
+            best_image = duplicate_service.determine_best_image(group)
+            for img in group.images:
+                img.is_best = (img.asset_id == best_image.asset_id)
+        
+        # Formater et retourner les résultats
+        groups_data = format_duplicate_groups_with_best(groups)
+        
+        logger.info(f"✅ {len(groups_data)} groupes de doublons trouvés")
         
         return jsonify({
             'success': True,
-            'source_asset': {
-                'id': asset_id,
-                'filename': 'source.jpg'  # TODO: récupérer depuis Immich
-            },
-            'similar_images': [img.__dict__ for img in similar_images],
-            'total_found': len(similar_images)
+            'groups': groups_data,
+            'total_groups': len(groups_data),
+            'total_analyzed': len(images_data),
+            'download_errors': download_errors
         })
         
     except Exception as e:
-        logger.error(f"❌ Erreur find_similar: {e}")
+        logger.error(f"❌ Erreur recherche doublons: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return jsonify({
             'success': False,
             'error': str(e)
         }), 500
 
+
+def format_duplicate_groups_with_best(groups: List) -> List[Dict]:
+    """Formater les groupes en marquant la meilleure image"""
+    groups_data = []
+    
+    for group in groups:
+        groups_data.append({
+            'group_id': group.group_id,
+            'images': [
+                {
+                    'asset_id': img.asset_id,
+                    'similarity': img.similarity,
+                    'filename': img.filename,
+                    'date': img.date,
+                    'thumbnail_url': img.thumbnail_url,
+                    'is_best': getattr(img, 'is_best', False),  # Marquer la meilleure
+                    'quality_metrics': {
+                        'quality_score': getattr(img, 'quality_score', 0),
+                        'blur_score': getattr(img, 'blur_score', 0),
+                        'file_size': getattr(img, 'file_size', 0),
+                        'resolution': getattr(img, 'resolution', 0)
+                    }
+                }
+                for img in group.images
+            ],
+            'similarity_avg': group.similarity_avg,
+            'total_images': group.total_images,
+            'best_image_id': next((img.asset_id for img in group.images if getattr(img, 'is_best', False)), None)
+        })
+    
+    return groups_data
 
 @duplicate_bp.route('/duplicates/find-similar-from-upload', methods=['POST'])
 def find_similar_from_upload():
