@@ -40,9 +40,17 @@ class ImmichImageLoader:
     def __init__(self, proxy_url: str, api_key: str):
         self.proxy_url = proxy_url.rstrip('/')
         self.api_key = api_key
-        self.headers = {'x-api-key': api_key}
+        # Headers corrects pour Immich
+        self.headers = {
+            'x-api-key': api_key,
+            'Accept': 'application/octet-stream'
+        }
         self.temp_dir = Path(tempfile.gettempdir()) / 'duplicate_detection'
         self.temp_dir.mkdir(exist_ok=True)
+        
+        # Log pour debug
+        logger.info(f"🔑 ImmichImageLoader initialisé avec proxy: {self.proxy_url}")
+        logger.info(f"🔑 API Key configurée: {'Oui' if api_key else 'Non'} (longueur: {len(api_key) if api_key else 0})")
     
     def download_image(self, asset_id: str, size: str = 'preview') -> Path:
         """
@@ -53,38 +61,69 @@ class ImmichImageLoader:
             size: 'thumbnail', 'preview' ou 'original'
         
         Returns:
-            Chemin vers le fichier temporaire
+            Chemin vers le fichier temporaire ou None si erreur
         """
         # Utiliser le cache local si disponible
         cache_file = self.temp_dir / f"{asset_id}_{size}.jpg"
         if cache_file.exists() and cache_file.stat().st_mtime > time.time() - 3600:
+            logger.debug(f"✅ Cache hit pour {asset_id}")
             return cache_file
         
-        # Télécharger depuis Immich
+        # Construire l'URL selon le type
         if size == 'original':
-            url = f"{self.proxy_url}/api/assets/{asset_id}/original"
+            # Pour l'original, utiliser le endpoint de téléchargement
+            url = f"{self.proxy_url}/api/asset/download/{asset_id}"
+        elif size == 'thumbnail':
+            # Pour les miniatures
+            url = f"{self.proxy_url}/api/asset/thumbnail/{asset_id}"
         else:
-            url = f"{self.proxy_url}/api/assets/{asset_id}/thumbnail?size={size}"
+            # Pour preview (taille moyenne)
+            url = f"{self.proxy_url}/api/asset/thumbnail/{asset_id}?size=preview"
+        
+        logger.debug(f"📥 Téléchargement: {url}")
         
         try:
-            response = requests.get(url, headers=self.headers, timeout=30)
+            response = requests.get(
+                url, 
+                headers=self.headers, 
+                timeout=30,
+                stream=True  # Important pour les gros fichiers
+            )
+            
+            # Log détaillé en cas d'erreur
+            if response.status_code == 401:
+                logger.error(f"❌ 401 Unauthorized - Vérifiez votre clé API")
+                logger.error(f"   URL tentée: {url}")
+                logger.error(f"   Headers envoyés: {list(self.headers.keys())}")
+                return None
+            
             response.raise_for_status()
             
             # Sauvegarder dans le cache
-            cache_file.write_bytes(response.content)
+            with open(cache_file, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            
+            logger.info(f"✅ Image téléchargée: {asset_id} ({cache_file.stat().st_size} bytes)")
             return cache_file
             
+        except requests.exceptions.RequestException as e:
+            logger.error(f"❌ Erreur téléchargement {asset_id}: {e}")
+            return None
         except Exception as e:
-            logger.error(f"Erreur téléchargement {asset_id}: {e}")
+            logger.error(f"❌ Erreur inattendue {asset_id}: {e}")
             return None
     
     def cleanup_old_cache(self, max_age_hours: int = 24):
         """Nettoyer les vieux fichiers du cache"""
         current_time = time.time()
+        cleaned = 0
         for file_path in self.temp_dir.glob("*.jpg"):
             if current_time - file_path.stat().st_mtime > max_age_hours * 3600:
                 file_path.unlink()
-
+                cleaned += 1
+        if cleaned > 0:
+            logger.info(f"🗑️ {cleaned} fichiers cache nettoyés")
 
 @duplicate_bp.route('/duplicates/status', methods=['GET'])
 def get_duplicate_status():
