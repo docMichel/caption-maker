@@ -157,6 +157,17 @@ def get_duplicate_status():
 
 @duplicate_bp.route('/duplicates/find-similar', methods=['POST'])
 def find_similar():
+    import os
+    
+    # Utiliser directement les variables d'environnement
+    # Supporter les deux noms de variables pour l'URL
+    immich_url = os.getenv('IMMICH_API_URL') or os.getenv('IMMICH_PROXY_URL') or 'http://localhost:3001'
+    immich_api_key = os.getenv('IMMICH_API_KEY') or ''
+    
+    logger.info(f"🔑 Configuration Immich:")
+    logger.info(f"   URL: {immich_url}")
+    logger.info(f"   API Key: {'Oui' if immich_api_key else 'Non'} (longueur: {len(immich_api_key)})")
+    
     """Trouver les doublons UNIQUEMENT parmi les images sélectionnées"""
     try:
         data = request.json
@@ -178,10 +189,13 @@ def find_similar():
             duplicate_service = DuplicateDetectionService()
         
         # Initialiser le loader Immich
-        immich_loader = ImmichImageLoader(
-            current_app.config.get('IMMICH_PROXY_URL', ServerConfig.IMMICH_PROXY_URL),
-            current_app.config.get('IMMICH_API_KEY', ServerConfig.IMMICH_API_KEY)
-        )
+       # immich_loader = ImmichImageLoader(
+       #    current_app.config.get('IMMICH_PROXY_URL', ServerConfig.IMMICH_PROXY_URL),
+       #     current_app.config.get('IMMICH_API_KEY', ServerConfig.IMMICH_API_KEY)
+       # )
+            # Initialiser le loader Immich
+        immich_loader = ImmichImageLoader(immich_url, immich_api_key)
+
         
         # Nettoyer le cache
         immich_loader.cleanup_old_cache()
