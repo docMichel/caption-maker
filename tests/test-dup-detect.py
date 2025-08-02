@@ -43,7 +43,9 @@ def test_immich_connection():
     
     # Test 1: Server info
     try:
-        response = requests.get(f"{IMMICH_PROXY_URL}/api/server-info/version", headers=headers)
+        response = requests.get(f"{SERVER_URL}/api/health")
+
+#        response = requests.get(f"{IMMICH_PROXY_URL}/api/server-info/version", headers=headers)
         if response.status_code == 200:
             print(f"{Colors.GREEN}✅ Connexion Immich OK{Colors.END}")
             print(f"Version: {response.json()}")
