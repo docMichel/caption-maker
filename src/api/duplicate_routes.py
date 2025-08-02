@@ -72,7 +72,7 @@ class ImmichImageLoader:
         # Construire l'URL selon le type
         if size == 'original':
             # Pour l'original, utiliser le endpoint de téléchargement
-            url = f"{self.proxy_url}/api/assets/download/{asset_id}"
+            url = f"{self.proxy_url}/api/assets/{asset_id}/original"
         elif size == 'thumbnail':
             # Pour les miniatures
             url = f"{self.proxy_url}/api/assets/thumbnail/{asset_id}"
