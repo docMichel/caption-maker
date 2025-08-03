@@ -97,7 +97,11 @@ def find_similar_sync():
             
             # Analyser avec le service
             groups = duplicate_service.find_duplicates(images, threshold)
-            
+            for group in groups:
+                for img in group['images']:
+                    if 'data' in img:
+                        del img['data']  # Supprimer les données binaires
+
             return jsonify({
                 'success': True,
                 'groups': groups,
@@ -372,6 +376,9 @@ def process_duplicate_detection_async(request_id: str, data: Dict[str, Any], app
             # Enrichir avec métadonnées Immich
             for group in groups:
                 for img in group['images']:
+                    if 'data' in img:
+                        del img['data']
+                        
                     asset_metadata = immich_service.get_asset_metadata(img['asset_id'])
                     if asset_metadata:
                         img.update({
