@@ -206,6 +206,8 @@ def find_similar_stream(request_id):
                     yield sse_response
                     
                     if message.get('event') in ['complete', 'error']:
+                        yield sse_response  # S'assurer que le message est envoyé
+
                         break
                 else:
                     # Heartbeat

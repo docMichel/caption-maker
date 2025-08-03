@@ -56,6 +56,7 @@ def generate_caption_stream(request_id):
                     
                     # Si c'est un message de fin, arrêter le flux
                     if message.get('event') in ['complete', 'error']:
+                        yield sse_response  # S'assurer que le message est envoyé
                         break
                 else:
                     # Heartbeat pour maintenir la connexion
