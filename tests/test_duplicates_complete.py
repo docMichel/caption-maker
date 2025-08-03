@@ -35,15 +35,41 @@ def get_immich_assets(limit=20):
     print(f"\n{Colors.CYAN}📥 Récupération d'assets depuis Immich...{Colors.END}")
     
     headers = {
-        'x-api-key': IMMICH_API_KEY,  # Minuscule !
+        'x-api-key': IMMICH_API_KEY,
         'Content-Type': 'application/json'
     }
     
     try:
-        # Pour récupérer des assets, on peut utiliser la recherche ou récupérer des albums
-        # Option 1: Récupérer les albums et prendre des assets dedans
-        print("  Tentative via albums...")
-        albums_url = f"{IMMICH_PROXY_URL}/api/album"
+        # D'après les discussions GitHub, on utilise searchMetadata pour récupérer tous les assets
+        print("  Utilisation de searchMetadata...")
+        search_url = f"{IMMICH_PROXY_URL}/api/search/metadata"
+        
+        # Recherche sans filtre = tous les assets
+        search_data = {
+            "page": 1,
+            "size": limit
+        }
+        
+        response = requests.post(search_url, headers=headers, json=search_data)
+        
+        if response.status_code == 200:
+            data = response.json()
+            
+            # Le format peut varier selon la version
+            if isinstance(data, dict) and 'assets' in data:
+                assets = data['assets'].get('items', [])
+            elif isinstance(data, list):
+                assets = data
+            else:
+                assets = []
+            
+            if assets:
+                print(f"{Colors.GREEN}✅ {len(assets)} assets trouvés{Colors.END}")
+                return assets[:limit]
+        
+        # Fallback : essayer via les albums
+        print("  Fallback via albums...")
+        albums_url = f"{IMMICH_PROXY_URL}/api/albums"
         response = requests.get(albums_url, headers=headers)
         
         if response.status_code == 200:
@@ -52,46 +78,26 @@ def get_immich_assets(limit=20):
                 print(f"  → {len(albums)} albums trouvés")
                 
                 # Prendre des assets du premier album non vide
-                for album in albums[:3]:  # Essayer les 3 premiers albums
+                for album in albums[:3]:
                     album_id = album.get('id')
                     if album_id:
-                        # Récupérer les détails de l'album
-                        album_detail_url = f"{IMMICH_PROXY_URL}/api/album/{album_id}"
-                        album_response = requests.get(album_detail_url, headers=headers)
+                        # Récupérer l'album avec ses assets
+                        album_url = f"{IMMICH_PROXY_URL}/api/albums/{album_id}"
+                        album_response = requests.get(album_url, headers=headers)
                         
                         if album_response.status_code == 200:
                             album_data = album_response.json()
                             assets = album_data.get('assets', [])
                             
                             if assets:
-                                print(f"{Colors.GREEN}✅ {len(assets)} assets trouvés dans l'album '{album.get('albumName', 'Sans nom')}'{Colors.END}")
+                                print(f"{Colors.GREEN}✅ {len(assets)} assets trouvés dans '{album.get('albumName', 'Sans nom')}'{Colors.END}")
                                 return assets[:limit]
         
-        # Option 2: Si pas d'albums, essayer une recherche
-        print("  Tentative via recherche...")
-        search_url = f"{IMMICH_PROXY_URL}/api/search"
-        search_data = {
-            "q": "*",  # Recherche tout
-            "type": "IMAGE",
-            "page": 1,
-            "size": limit
-        }
-        
-        response = requests.post(search_url, headers=headers, json=search_data)
-        
-        if response.status_code == 200:
-            search_results = response.json()
-            assets = search_results.get('assets', {}).get('items', [])
-            
-            if assets:
-                print(f"{Colors.GREEN}✅ {len(assets)} assets trouvés via recherche{Colors.END}")
-                return assets[:limit]
-        
-        print(f"{Colors.YELLOW}⚠️  Aucun asset trouvé. Assurez-vous d'avoir des photos dans Immich.{Colors.END}")
+        print(f"{Colors.YELLOW}⚠️  Aucun asset trouvé. Vérifiez que vous avez des photos dans Immich.{Colors.END}")
         return []
         
     except Exception as e:
-        print(f"{Colors.RED}❌ Erreur récupération assets: {e}{Colors.END}")
+        print(f"{Colors.RED}❌ Erreur: {e}{Colors.END}")
         return []
 
 
