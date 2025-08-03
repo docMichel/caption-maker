@@ -120,13 +120,15 @@ def init_services(app):
 
         # Service de détection de doublons
         try:
-            from src.services.duplicate_detection_service import DuplicateDetectionService
-            duplicate_service = DuplicateDetectionService()
-            services['duplicate_service'] = duplicate_service
-            logger.info("✅ DuplicateDetectionService initialisé")
-        except ImportError:
-            logger.warning("⚠️ DuplicateDetectionService non disponible (imagehash manquant?)")
-            # Le service reste optionnel
+            duplicate_service = DuplicateDetectionService(cache_embeddings=True)
+            if duplicate_service.clip_available:
+                services['duplicate_service'] = duplicate_service
+                logger.info("✅ DuplicateDetectionService initialisé")
+            else:
+                logger.warning("⚠️  DuplicateDetectionService: CLIP non disponible")
+        except Exception as e:
+            logger.warning(f"⚠️  DuplicateDetectionService non initialisé: {e}")
+
 
         # Stocker les services dans la config Flask
         app.config['SERVICES'] = services
@@ -168,10 +170,10 @@ def print_startup_info():
     print(f"🔗 Health check: {protocol}://{ServerConfig.HOST}:{ServerConfig.PORT}/api/health")
     print(f"🎨 API principale: {protocol}://{ServerConfig.HOST}:{ServerConfig.PORT}/api/ai/generate-caption")
     print(f"🚀 API asynchrone: {protocol}://{ServerConfig.HOST}:{ServerConfig.PORT}/api/ai/generate-caption-async")
+    print(f"🔍 Détection doublons: {protocol}://{ServerConfig.HOST}:{ServerConfig.PORT}/api/duplicates/find-similar-async")  # AJOUTER
     print(f"⚙️  Configuration: {protocol}://{ServerConfig.HOST}:{ServerConfig.PORT}/api/ai/config")
     print(f"📊 Statistiques: {protocol}://{ServerConfig.HOST}:{ServerConfig.PORT}/api/ai/stats")
     print("=" * 60)
-
 
 def main():
     """Point d'entrée principal"""

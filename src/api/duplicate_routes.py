@@ -3,27 +3,20 @@
 📍 src/api/duplicate_routes.py
 
 Routes API pour la détection de doublons d'images
-Utilise CLIP pour comparer les embeddings visuels
+Support SSE pour traitement asynchrone de nombreux assets
 """
 
 from flask import Blueprint, request, jsonify, Response, current_app
 import logging
 import json
 import time
-import requests
-from typing import Dict, List
-from pathlib import Path
-import tempfile
+import threading
+from typing import Dict, Any, List
+import uuid
 
-# Import du service de détection
-from src.services.duplicate_detection_service import DuplicateDetectionService
-from src.config.server_config import ServerConfig
-
-logger = logging.getLogger(__name__)
-
-# Import du service de détection
-from src.utils.image_utils import get_image_processor
+# Import des utilitaires
 from src.utils.sse_manager import get_sse_manager
+from src.utils.cache_manager import get_generation_cache
 
 logger = logging.getLogger(__name__)
 
@@ -31,121 +24,29 @@ logger = logging.getLogger(__name__)
 duplicate_bp = Blueprint('duplicates', __name__)
 
 
-
-# Ajouter cette classe au début de duplicate_routes.py, après les imports
-
-class ImmichImageLoader:
-    """Classe pour charger les images depuis Immich"""
-    
-    def __init__(self, proxy_url: str, api_key: str):
-        self.proxy_url = proxy_url.rstrip('/')
-        self.api_key = api_key
-        # Headers corrects pour Immich
-        self.headers = {
-            'x-api-key': api_key,
-            'Accept': 'application/octet-stream'
-        }
-        self.temp_dir = Path(tempfile.gettempdir()) / 'duplicate_detection'
-        self.temp_dir.mkdir(exist_ok=True)
-        
-        # Log pour debug
-        logger.info(f"🔑 ImmichImageLoader initialisé avec proxy: {self.proxy_url}")
-        logger.info(f"🔑 API Key configurée: {'Oui' if api_key else 'Non'} (longueur: {len(api_key) if api_key else 0})")
-    
-    def download_image(self, asset_id: str, size: str = 'preview') -> Path:
-        """
-        Télécharger une image depuis Immich
-        
-        Args:
-            asset_id: ID de l'asset Immich
-            size: 'thumbnail', 'preview' ou 'original'
-        
-        Returns:
-            Chemin vers le fichier temporaire ou None si erreur
-        """
-        # Utiliser le cache local si disponible
-        cache_file = self.temp_dir / f"{asset_id}_{size}.jpg"
-        if cache_file.exists() and cache_file.stat().st_mtime > time.time() - 3600:
-            logger.debug(f"✅ Cache hit pour {asset_id}")
-            return cache_file
-        
-       # Construire l'URL selon le type
-        if size == 'original':
-            url = f"{self.proxy_url}/api/assets/{asset_id}/original"
-        elif size == 'thumbnail':
-            url = f"{self.proxy_url}/api/assets/{asset_id}/thumbnail?size=thumbnail"
-        else:  # preview
-            url = f"{self.proxy_url}/api/assets/{asset_id}/thumbnail?size=preview"
-        
-        logger.debug(f"📥 Téléchargement: {url}")
-                
-        try:
-            response = requests.get(
-                url, 
-                headers=self.headers, 
-                timeout=30,
-                stream=True  # Important pour les gros fichiers
-            )
-            
-            # Log détaillé en cas d'erreur
-            if response.status_code == 401:
-                logger.error(f"❌ 401 Unauthorized - Vérifiez votre clé API")
-                logger.error(f"   URL tentée: {url}")
-                logger.error(f"   Headers envoyés: {list(self.headers.keys())}")
-                return None
-            
-            response.raise_for_status()
-            
-            # Sauvegarder dans le cache
-            with open(cache_file, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    f.write(chunk)
-            
-            logger.info(f"✅ Image téléchargée: {asset_id} ({cache_file.stat().st_size} bytes)")
-            return cache_file
-            
-        except requests.exceptions.RequestException as e:
-            logger.error(f"❌ Erreur téléchargement {asset_id}: {e}")
-            return None
-        except Exception as e:
-            logger.error(f"❌ Erreur inattendue {asset_id}: {e}")
-            return None
-    
-    def cleanup_old_cache(self, max_age_hours: int = 24):
-        """Nettoyer les vieux fichiers du cache"""
-        current_time = time.time()
-        cleaned = 0
-        for file_path in self.temp_dir.glob("*.jpg"):
-            if current_time - file_path.stat().st_mtime > max_age_hours * 3600:
-                file_path.unlink()
-                cleaned += 1
-        if cleaned > 0:
-            logger.info(f"🗑️ {cleaned} fichiers cache nettoyés")
-
 @duplicate_bp.route('/duplicates/status', methods=['GET'])
 def get_duplicate_status():
     """Vérifier le statut du service de détection de doublons"""
     try:
-        # Récupérer le service depuis le contexte Flask
+        # Récupérer le service
         duplicate_service = current_app.config.get('SERVICES', {}).get('duplicate_service')
         
         if not duplicate_service:
             return jsonify({
                 'success': False,
                 'clip_available': False,
-                'error': 'Service de détection non initialisé'
-            })
-        
-        stats = duplicate_service.get_stats()
+                'error': 'Service de détection non disponible'
+            }), 503
         
         return jsonify({
             'success': True,
-            'clip_available': duplicate_service.is_available(),
-            'stats': stats
+            'clip_available': duplicate_service.clip_available,
+            'model_info': duplicate_service.get_model_info(),
+            'stats': duplicate_service.get_stats()
         })
         
     except Exception as e:
-        logger.error(f"❌ Erreur status duplicates: {e}")
+        logger.error(f"❌ Erreur status doublons: {e}")
         return jsonify({
             'success': False,
             'error': str(e)
@@ -153,412 +54,413 @@ def get_duplicate_status():
 
 
 @duplicate_bp.route('/duplicates/find-similar', methods=['POST'])
-def find_similar():
-    import os
-    
-    # Utiliser directement les variables d'environnement
-    # Supporter les deux noms de variables pour l'URL
-    immich_url = os.getenv('IMMICH_API_URL') or os.getenv('IMMICH_PROXY_URL') or 'http://localhost:3001'
-    immich_api_key = os.getenv('IMMICH_API_KEY') or ''
-    
-    logger.info(f"🔑 Configuration Immich:")
-    logger.info(f"   URL: {immich_url}")
-    logger.info(f"   API Key: {'Oui' if immich_api_key else 'Non'} (longueur: {len(immich_api_key)})")
-    
-    """Trouver les doublons UNIQUEMENT parmi les images sélectionnées"""
-    try:
-        data = request.json
-        asset_ids = data.get('asset_ids', [])
-        threshold = float(data.get('threshold', 0.85))
-        
-        if not asset_ids:
-            return jsonify({
-                'success': False,
-                'error': 'Aucune image sélectionnée'
-            }), 400
-        
-        logger.info(f"🔍 Recherche doublons parmi {len(asset_ids)} images sélectionnées")
-        
-        # Récupérer le service depuis current_app
-        duplicate_service = current_app.config.get('SERVICES', {}).get('duplicate_service')
-        if not duplicate_service:
-            # Créer une instance temporaire si pas dans SERVICES
-            duplicate_service = DuplicateDetectionService()
-        
-        # Initialiser le loader Immich
-       # immich_loader = ImmichImageLoader(
-       #    current_app.config.get('IMMICH_PROXY_URL', ServerConfig.IMMICH_PROXY_URL),
-       #     current_app.config.get('IMMICH_API_KEY', ServerConfig.IMMICH_API_KEY)
-       # )
-            # Initialiser le loader Immich
-        immich_loader = ImmichImageLoader(immich_url, immich_api_key)
-
-        
-        # Nettoyer le cache
-        immich_loader.cleanup_old_cache()
-        
-        # Télécharger UNIQUEMENT les images sélectionnées
-        images_data = []
-        download_errors = 0
-        
-        for i, asset_id in enumerate(asset_ids):
-            image_path = immich_loader.download_image(asset_id, 'preview')
-            
-            if image_path:
-                images_data.append({
-                    'id': asset_id,
-                    'path': str(image_path),
-                    'filename': f"IMG_{asset_id[:8]}.jpg",
-                    'date': '2024-01-01T00:00:00',  # TODO: récupérer depuis Immich si possible
-                    'thumbnail_url': f"/image-proxy.php?id={asset_id}&type=thumbnail"
-                })
-            else:
-                download_errors += 1
-                logger.warning(f"Impossible de télécharger {asset_id}")
-            
-            # Log de progression
-            if i % 5 == 0:
-                logger.info(f"Téléchargement: {i+1}/{len(asset_ids)}")
-        
-        if not images_data:
-            return jsonify({
-                'success': False,
-                'error': 'Impossible de télécharger les images'
-            }), 500
-        
-        logger.info(f"✅ {len(images_data)} images téléchargées sur {len(asset_ids)}")
-        
-        # Analyser UNIQUEMENT ces images entre elles
-        groups = duplicate_service.analyze_selection_only(
-            images_data,
-            threshold=threshold
-        )
-        
-        # Pour chaque groupe, déterminer la meilleure image
-        for group in groups:
-            best_image = duplicate_service.determine_best_image(group)
-            for img in group.images:
-                img.is_best = (img.asset_id == best_image.asset_id)
-        
-        # Formater et retourner les résultats
-        groups_data = format_duplicate_groups_with_best(groups)
-        
-        logger.info(f"✅ {len(groups_data)} groupes de doublons trouvés")
-        
-        return jsonify({
-            'success': True,
-            'groups': groups_data,
-            'total_groups': len(groups_data),
-            'total_analyzed': len(images_data),
-            'download_errors': download_errors
-        })
-        
-    except Exception as e:
-        logger.error(f"❌ Erreur recherche doublons: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-
-def format_duplicate_groups_with_best(groups: List) -> List[Dict]:
-    """Formater les groupes en marquant la meilleure image"""
-    groups_data = []
-    
-    for group in groups:
-        groups_data.append({
-            'group_id': group.group_id,
-            'images': [
-                {
-                    'asset_id': img.asset_id,
-                    'similarity': img.similarity,
-                    'filename': img.filename,
-                    'date': img.date,
-                    'thumbnail_url': img.thumbnail_url,
-                    'is_best': getattr(img, 'is_best', False),  # Marquer la meilleure
-                    'quality_metrics': {
-                        'quality_score': getattr(img, 'quality_score', 0),
-                        'blur_score': getattr(img, 'blur_score', 0),
-                        'file_size': getattr(img, 'file_size', 0),
-                        'resolution': getattr(img, 'resolution', 0)
-                    }
-                }
-                for img in group.images
-            ],
-            'similarity_avg': group.similarity_avg,
-            'total_images': group.total_images,
-            'best_image_id': next((img.asset_id for img in group.images if getattr(img, 'is_best', False)), None)
-        })
-    
-    return groups_data
-
-@duplicate_bp.route('/duplicates/find-similar-from-upload', methods=['POST'])
-def find_similar_from_upload():
-    """Trouver les images similaires à partir d'un upload base64"""
+def find_similar_sync():
+    """
+    Endpoint synchrone pour détection de doublons (petits lots)
+    Pour compatibilité avec l'existant
+    """
     try:
         data = request.get_json()
-        image_base64 = data.get('image_base64')
-        album_id = data.get('album_id')
+        selected_asset_ids = data.get('selected_asset_ids', [])
         threshold = data.get('threshold', 0.85)
         
-        if not image_base64:
+        if not selected_asset_ids:
             return jsonify({
                 'success': False,
-                'error': 'image_base64 requise'
+                'error': 'Aucun asset sélectionné'
             }), 400
         
-        # Récupérer les services
-        services = current_app.config.get('SERVICES', {})
-        duplicate_service = services.get('duplicate_service')
-        
-        if not duplicate_service or not duplicate_service.is_available():
-            return jsonify({
-                'success': False,
-                'error': 'Service de détection non disponible'
-            }), 503
-        
-        # Sauvegarder l'image temporairement
-        image_processor = get_image_processor()
-        temp_path = image_processor.save_base64_image(image_base64, "upload_test")
-        
-        if not temp_path:
-            return jsonify({
-                'success': False,
-                'error': 'Erreur traitement image'
-            }), 400
-        
-        try:
-            # TODO: Récupérer les images de l'album depuis Immich
-            candidates = []  # À implémenter
+        # Pour moins de 10 assets, traitement synchrone
+        if len(selected_asset_ids) <= 10:
+            # Récupérer les services
+            services = current_app.config.get('SERVICES', {})
+            duplicate_service = services.get('duplicate_service')
+            immich_service = services.get('immich_service')
             
-            # Trouver les similaires
-            similar_images = duplicate_service.find_similar_images(
-                temp_path,
-                candidates,
-                threshold=threshold
-            )
+            if not duplicate_service or not immich_service:
+                return jsonify({
+                    'success': False,
+                    'error': 'Services non disponibles'
+                }), 503
+            
+            # Traitement direct
+            logger.info(f"🔍 Recherche doublons parmi {len(selected_asset_ids)} images")
+            
+            # Télécharger les images depuis Immich
+            images = _download_images_from_immich(selected_asset_ids, immich_service)
+            
+            if not images:
+                return jsonify({
+                    'success': False,
+                    'error': 'Impossible de récupérer les images'
+                }), 500
+            
+            # Analyser avec le service
+            groups = duplicate_service.find_duplicates(images, threshold)
             
             return jsonify({
                 'success': True,
-                'similar_images': [img.__dict__ for img in similar_images],
-                'total_found': len(similar_images)
+                'groups': groups,
+                'total_groups': len(groups),
+                'threshold': threshold
             })
+        
+        else:
+            # Trop d'assets, suggérer l'API async
+            return jsonify({
+                'success': False,
+                'error': f'Trop d\'assets ({len(selected_asset_ids)}). Utilisez l\'API asynchrone.',
+                'suggestion': '/api/duplicates/find-similar-async'
+            }), 400
             
-        finally:
-            # Nettoyer le fichier temporaire
-            try:
-                import os
-                os.unlink(temp_path)
-            except:
-                pass
-                
     except Exception as e:
-        logger.error(f"❌ Erreur find_similar_upload: {e}")
+        logger.error(f"❌ Erreur find-similar: {e}")
         return jsonify({
             'success': False,
             'error': str(e)
         }), 500
 
 
-@duplicate_bp.route('/duplicates/analyze-album/<album_id>', methods=['POST'])
-def analyze_album_duplicates(album_id):
-    """Analyser un album complet pour trouver les doublons (SSE)"""
-    logger.info(f"📸 Analyse album {album_id}")
+@duplicate_bp.route('/duplicates/find-similar-async', methods=['POST'])
+def find_similar_async():
+    """
+    Endpoint pour démarrer une détection asynchrone avec SSE
     
-    # IMPORTANT: Capturer l'app ICI, AVANT le générateur
-    app = current_app._get_current_object()
-    
-    # Récupérer les données de la requête ICI aussi
-    request_data = request.get_json() if request.is_json else {}
-    threshold = request_data.get('threshold', 0.85)
-    
-    def generate():
-        """Générateur SSE pour l'analyse"""
-        with app.app_context():
-            try:
-                yield f"data: {json.dumps({'event': 'start', 'data': {'album_id': album_id}})}\n\n"
-                
-                # Récupérer les services
-                services = app.config.get('SERVICES', {})
-                duplicate_service = services.get('duplicate_service')
-                
-                if not duplicate_service or not duplicate_service.is_available():
-                    yield f"data: {json.dumps({'event': 'error', 'data': {'error': 'Service non disponible'}})}\n\n"
-                    return
-                
-                # Utiliser les images de test
-                test_images_dir = Path.home() / "caption-maker" / "test_images"
-                images = []
-                
-                if test_images_dir.exists():
-                    for i, img_file in enumerate(test_images_dir.glob("*.jpg")):
-                        images.append({
-                            'id': f'test-{i:03d}',
-                            'filename': img_file.name,
-                            'date': f'2024-01-01T{12+i%24}:00:00',
-                            'path': str(img_file)
-                        })
-                
-                if not images:
-                    yield f"data: {json.dumps({'event': 'error', 'data': {'error': 'Aucune image trouvée'}})}\n\n"
-                    return
-                
-                total = len(images)
-                yield f"data: {json.dumps({'event': 'progress', 'data': {'progress': 0, 'details': f'Analyse de {total} images'}})}\n\n"
-                
-                # Collecter les updates de progress
-                progress_updates = []
-                
-                def progress_callback(progress, details):
-                    # Stocker pour envoi différé
-                    progress_updates.append({
-                        'progress': progress,
-                        'details': details
-                    })
-                
-                # Lancer l'analyse
-                groups = duplicate_service.analyze_album_for_duplicates(
-                    images,
-                    threshold=threshold,
-                    progress_callback=progress_callback
-                )
-                
-                # Envoyer tous les progress updates collectés
-                for update in progress_updates:
-                    yield f"data: {json.dumps({'event': 'progress', 'data': update})}\n\n"
-                
-                # Convertir les groupes en dict
-                groups_dict = []
-                for group in groups:
-                    group_dict = {
-                        'group_id': group.group_id,
-                        'similarity_avg': group.similarity_avg,
-                        'total_images': group.total_images,
-                        'images': [
-                            {
-                                'asset_id': img.asset_id,
-                                'similarity': img.similarity,
-                                'filename': img.filename,
-                                'date': img.date,
-                                'is_primary': img.is_primary
-                            }
-                            for img in group.images
-                        ]
-                    }
-                    groups_dict.append(group_dict)
-                
-                # Résultat final
-                yield f"data: {json.dumps({'event': 'complete', 'data': {'groups': groups_dict, 'total_groups': len(groups)}})}\n\n"
-                
-            except Exception as e:
-                logger.error(f"❌ Erreur analyse album: {e}")
-                import traceback
-                logger.error(traceback.format_exc())
-                yield f"data: {json.dumps({'event': 'error', 'data': {'error': str(e)}})}\n\n"
-    
-    return Response(generate(), mimetype='text/event-stream', headers={
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-        'X-Accel-Buffering': 'no'
-    })
-
-@duplicate_bp.route('/duplicates/create-group', methods=['POST'])
-def create_duplicate_group():
-    """Créer manuellement un groupe de doublons"""
+    Body JSON:
+    {
+        "request_id": "unique-id",
+        "selected_asset_ids": ["id1", "id2", ...],
+        "threshold": 0.85,
+        "group_by_time": true,
+        "time_window_hours": 24
+    }
+    """
     try:
         data = request.get_json()
-        album_id = data.get('album_id')
-        asset_ids = data.get('asset_ids', [])
-        group_name = data.get('group_name', 'Manual group')
-        
-        if not album_id or len(asset_ids) < 2:
+        if not data:
             return jsonify({
                 'success': False,
-                'error': 'album_id et au moins 2 asset_ids requis'
+                'error': 'Corps JSON requis'
             }), 400
         
-        # TODO: Implémenter la création de groupe dans Immich
-        # Pour le moment, retourner un succès simulé
+        # Générer un request_id si non fourni
+        request_id = data.get('request_id') or f"dup-{uuid.uuid4().hex[:8]}"
+        selected_asset_ids = data.get('selected_asset_ids', [])
+        
+        if not selected_asset_ids:
+            return jsonify({
+                'success': False,
+                'error': 'Aucun asset sélectionné'
+            }), 400
+        
+        # Récupérer l'app pour le contexte
+        app = current_app._get_current_object()
+        
+        # Démarrer le traitement en arrière-plan
+        thread = threading.Thread(
+            target=process_duplicate_detection_async,
+            args=(request_id, data, app),
+            daemon=True
+        )
+        thread.start()
         
         return jsonify({
             'success': True,
-            'group_id': f'manual_{int(time.time())}',
-            'message': f'Groupe créé avec {len(asset_ids)} images'
+            'request_id': request_id,
+            'message': f'Analyse de {len(selected_asset_ids)} images démarrée',
+            'sse_url': f'/api/duplicates/find-similar-stream/{request_id}'
         })
         
     except Exception as e:
-        logger.error(f"❌ Erreur create_group: {e}")
+        logger.error(f"❌ Erreur démarrage async: {e}")
         return jsonify({
             'success': False,
             'error': str(e)
         }), 500
 
 
-@duplicate_bp.route('/duplicates/process-group', methods=['POST'])
-def process_duplicate_group():
-    """Traiter un groupe de doublons (garder le meilleur, fusionner, etc.)"""
-    try:
-        data = request.get_json()
-        group_id = data.get('group_id')
-        action = data.get('action')  # keep_best, merge_metadata, delete_duplicates
-        primary_asset_id = data.get('primary_asset_id')
+@duplicate_bp.route('/duplicates/find-similar-stream/<request_id>')
+def find_similar_stream(request_id):
+    """
+    Endpoint SSE pour suivre la progression de la détection
+    """
+    def event_stream():
+        """Générateur de flux SSE"""
+        sse_manager = get_sse_manager()
+        connection = sse_manager.create_connection(request_id)
         
-        if not group_id or not action:
-            return jsonify({
-                'success': False,
-                'error': 'group_id et action requis'
-            }), 400
-        
-        # TODO: Implémenter les actions sur les doublons
-        # - keep_best: Garder seulement l'image principale
-        # - merge_metadata: Fusionner les métadonnées sur l'image principale
-        # - delete_duplicates: Supprimer tous sauf le principal
-        
-        result = {
-            'success': True,
-            'action': action,
-            'group_id': group_id,
-            'message': f'Action {action} effectuée'
+        try:
+            # Message de connexion
+            yield f"data: {json.dumps({'event': 'connected', 'message': 'Connexion SSE établie'})}\n\n"
+            
+            # Boucle de lecture
+            while connection.is_active:
+                message = connection.get_message()
+                
+                if message:
+                    sse_response = sse_manager.format_sse_response(message)
+                    yield sse_response
+                    
+                    if message.get('event') in ['complete', 'error']:
+                        break
+                else:
+                    # Heartbeat
+                    heartbeat = {
+                        'event': 'heartbeat',
+                        'timestamp': time.strftime('%Y-%m-%d %H:%M:%S')
+                    }
+                    yield f"data: {json.dumps(heartbeat)}\n\n"
+                    
+        except GeneratorExit:
+            logger.info(f"Client déconnecté: {request_id}")
+        finally:
+            sse_manager.close_connection(request_id)
+    
+    return Response(
+        event_stream(),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'Access-Control-Allow-Origin': '*',
+            'X-Accel-Buffering': 'no'
         }
-        
-        if action == 'keep_best':
-            result['kept_asset'] = primary_asset_id
-            result['deleted_count'] = 2  # Simulé
-        
-        return jsonify(result)
-        
-    except Exception as e:
-        logger.error(f"❌ Erreur process_group: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+    )
 
 
-@duplicate_bp.route('/duplicates/stats/<album_id>', methods=['GET'])
-def get_duplicate_stats(album_id):
-    """Obtenir les statistiques de doublons pour un album"""
+@duplicate_bp.route('/duplicates/analyze-album/<album_id>', methods=['POST'])
+def analyze_album_async(album_id):
+    """
+    Analyser un album complet pour trouver les doublons
+    Utilise SSE pour la progression
+    """
     try:
-        # TODO: Implémenter avec les vraies données Immich
-        # Pour le moment, retourner des stats simulées
+        data = request.get_json() or {}
+        request_id = f"album-{album_id}-{int(time.time())}"
         
-        stats = {
-            'success': True,
+        # Préparer les données pour le traitement
+        process_data = {
+            'request_id': request_id,
             'album_id': album_id,
-            'total_images': 150,
-            'duplicate_groups': 12,
-            'duplicate_images': 36,
-            'space_savings': '245 MB',
-            'last_analysis': '2024-01-15T10:30:00'
+            'threshold': data.get('threshold', 0.85),
+            'group_by_time': data.get('group_by_time', True),
+            'time_window_hours': data.get('time_window_hours', 24)
         }
         
-        return jsonify(stats)
+        # Récupérer l'app pour le contexte
+        app = current_app._get_current_object()
+        
+        # Démarrer le traitement
+        thread = threading.Thread(
+            target=process_album_analysis_async,
+            args=(request_id, process_data, app),
+            daemon=True
+        )
+        thread.start()
+        
+        return jsonify({
+            'success': True,
+            'request_id': request_id,
+            'message': f'Analyse de l\'album {album_id} démarrée',
+            'sse_url': f'/api/duplicates/find-similar-stream/{request_id}'
+        })
         
     except Exception as e:
-        logger.error(f"❌ Erreur stats duplicates: {e}")
+        logger.error(f"❌ Erreur analyse album: {e}")
         return jsonify({
             'success': False,
             'error': str(e)
         }), 500
+
+
+def process_duplicate_detection_async(request_id: str, data: Dict[str, Any], app):
+    """Traitement asynchrone de détection de doublons"""
+    with app.app_context():
+        sse_manager = get_sse_manager()
+        
+        try:
+            logger.info(f"🔍 Démarrage détection async pour {request_id}")
+            
+            # Récupérer les paramètres
+            selected_asset_ids = data['selected_asset_ids']
+            threshold = data.get('threshold', 0.85)
+            total_images = len(selected_asset_ids)
+            
+            # Récupérer les services
+            services = app.config.get('SERVICES', {})
+            duplicate_service = services.get('duplicate_service')
+            immich_service = services.get('immich_service')
+            
+            if not duplicate_service or not immich_service:
+                raise ValueError("Services non disponibles")
+            
+            # Étape 1: Téléchargement des images
+            sse_manager.broadcast_progress(
+                request_id, 'download', 5, 
+                f'Téléchargement de {total_images} images...'
+            )
+            
+            images = []
+            for i, asset_id in enumerate(selected_asset_ids):
+                try:
+                    # Télécharger l'image
+                    image_data = immich_service.download_asset_image(asset_id)
+                    if image_data:
+                        images.append({
+                            'asset_id': asset_id,
+                            'data': image_data
+                        })
+                    
+                    # Progress update
+                    progress = 5 + int((i + 1) / total_images * 30)
+                    sse_manager.broadcast_progress(
+                        request_id, 'download', progress,
+                        f'Téléchargement: {i + 1}/{total_images}'
+                    )
+                    
+                except Exception as e:
+                    logger.warning(f"Erreur téléchargement {asset_id}: {e}")
+            
+            if not images:
+                raise ValueError("Aucune image téléchargée")
+            
+            sse_manager.broadcast_result(request_id, 'download', {
+                'downloaded': len(images),
+                'total': total_images
+            })
+            
+            # Étape 2: Encodage CLIP
+            sse_manager.broadcast_progress(
+                request_id, 'encoding', 40,
+                'Analyse des images avec CLIP...'
+            )
+            
+            # Encoder les images par batch
+            embeddings = []
+            batch_size = 10
+            
+            for i in range(0, len(images), batch_size):
+                batch = images[i:i + batch_size]
+                batch_embeddings = duplicate_service.encode_images_batch(batch)
+                embeddings.extend(batch_embeddings)
+                
+                progress = 40 + int((i + batch_size) / len(images) * 30)
+                sse_manager.broadcast_progress(
+                    request_id, 'encoding', progress,
+                    f'Encodage: {min(i + batch_size, len(images))}/{len(images)}'
+                )
+            
+            # Étape 3: Calcul des similarités
+            sse_manager.broadcast_progress(
+                request_id, 'similarity', 75,
+                'Calcul des similarités...'
+            )
+            
+            # Calculer la matrice de similarité
+            similarity_matrix = duplicate_service.compute_similarity_matrix(embeddings)
+            
+            # Étape 4: Regroupement
+            sse_manager.broadcast_progress(
+                request_id, 'grouping', 85,
+                'Regroupement des doublons...'
+            )
+            
+            groups = duplicate_service.group_similar_images(
+                images, similarity_matrix, threshold
+            )
+            
+            # Enrichir avec métadonnées Immich
+            for group in groups:
+                for img in group['images']:
+                    asset_metadata = immich_service.get_asset_metadata(img['asset_id'])
+                    if asset_metadata:
+                        img.update({
+                            'filename': asset_metadata.get('originalFileName', ''),
+                            'date': asset_metadata.get('fileCreatedAt', ''),
+                            'size': asset_metadata.get('exifInfo', {}).get('fileSizeInByte', 0)
+                        })
+            
+            # Étape 5: Résultat final
+            sse_manager.broadcast_progress(
+                request_id, 'completion', 100,
+                f'{len(groups)} groupes de doublons trouvés!'
+            )
+            
+            final_result = {
+                'success': True,
+                'groups': groups,
+                'total_groups': len(groups),
+                'total_duplicates': sum(len(g['images']) - 1 for g in groups),
+                'threshold': threshold,
+                'processing_time': time.time() - time.time()  # À implémenter
+            }
+            
+            sse_manager.broadcast_complete(request_id, final_result)
+            logger.info(f"✅ Détection terminée pour {request_id}: {len(groups)} groupes")
+            
+        except Exception as e:
+            import traceback
+            logger.error(f"❌ Erreur détection async: {e}")
+            logger.error(f"Traceback:\n{traceback.format_exc()}")
+            sse_manager.broadcast_error(request_id, str(e))
+
+
+def process_album_analysis_async(request_id: str, data: Dict[str, Any], app):
+    """Traitement asynchrone d'analyse d'album complet"""
+    with app.app_context():
+        sse_manager = get_sse_manager()
+        
+        try:
+            album_id = data['album_id']
+            logger.info(f"📸 Analyse album {album_id}")
+            
+            # Récupérer les services
+            services = app.config.get('SERVICES', {})
+            immich_service = services.get('immich_service')
+            
+            if not immich_service:
+                raise ValueError("Service Immich non disponible")
+            
+            # Étape 1: Récupérer tous les assets de l'album
+            sse_manager.broadcast_progress(
+                request_id, 'fetch_album', 10,
+                f'Récupération des images de l\'album...'
+            )
+            
+            album_assets = immich_service.get_album_assets(album_id)
+            
+            if not album_assets:
+                raise ValueError("Album vide ou non trouvé")
+            
+            sse_manager.broadcast_result(request_id, 'album_info', {
+                'album_id': album_id,
+                'total_assets': len(album_assets)
+            })
+            
+            # Utiliser le process de détection avec tous les assets
+            data['selected_asset_ids'] = [asset['id'] for asset in album_assets]
+            
+            # Continuer avec le process normal
+            process_duplicate_detection_async(request_id, data, app)
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur analyse album: {e}")
+            sse_manager.broadcast_error(request_id, str(e))
+
+
+def _download_images_from_immich(asset_ids: List[str], immich_service) -> List[Dict]:
+    """Helper pour télécharger les images depuis Immich"""
+    images = []
+    
+    for asset_id in asset_ids:
+        try:
+            image_data = immich_service.download_asset_image(asset_id)
+            if image_data:
+                images.append({
+                    'asset_id': asset_id,
+                    'data': image_data
+                })
+        except Exception as e:
+            logger.warning(f"Erreur téléchargement {asset_id}: {e}")
+    
+    return images
