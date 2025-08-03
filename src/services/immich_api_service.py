@@ -217,7 +217,7 @@ class ImmichAPIService:
         """
         try:
             # Endpoint pour récupérer les assets d'un album
-            response = self._make_request('GET', f'/api/album/{album_id}')
+            response = self._make_request('GET', f'/api/albums/{album_id}')
             
             if response and 'assets' in response:
                 return response['assets']

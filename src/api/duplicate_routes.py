@@ -350,7 +350,8 @@ def process_duplicate_detection_async(request_id: str, data: Dict[str, Any], app
                 batch_embeddings = duplicate_service.encode_images_batch(batch)
                 embeddings.extend(batch_embeddings)
                 
-                progress = 40 + int((i + batch_size) / len(images) * 30)
+                progress = 40 + int(min(i + batch_size, len(images)) / len(images) * 30)
+                #progress = 40 + int((i + batch_size) / len(images) * 30)
                 sse_manager.broadcast_progress(
                     request_id, 'encoding', progress,
                     f'Encodage: {min(i + batch_size, len(images))}/{len(images)}'
