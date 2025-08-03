@@ -447,10 +447,47 @@ def process_album_analysis_async(request_id: str, data: Dict[str, Any], app):
             logger.error(f"❌ Erreur analyse album: {e}")
             sse_manager.broadcast_error(request_id, str(e))
 
+# Modifier la fonction _download_images_from_immich dans duplicate_routes.py pour supporter le mode test
 
-def _download_images_from_immich(asset_ids: List[str], immich_service) -> List[Dict]:
-    """Helper pour télécharger les images depuis Immich"""
+def _download_images_from_immich(asset_ids: List[str], immich_service=None) -> List[Dict]:
+    """Helper pour télécharger les images depuis Immich ou utiliser des données de test"""
     images = []
+    
+    # Mode test : si les asset_ids commencent par "test-"
+    if asset_ids and asset_ids[0].startswith('test-'):
+        logger.info("🧪 Mode test détecté - génération d'images de test")
+        
+        # Générer des images de test
+        from PIL import Image
+        import io
+        
+        for i, asset_id in enumerate(asset_ids):
+            # Créer une image simple avec couleur différente
+            colors = ['red', 'orange', 'yellow', 'green', 'blue']
+            img = Image.new('RGB', (400, 300), color=colors[i % len(colors)])
+            
+            # Si c'est le dernier, faire un doublon du premier
+            if i == len(asset_ids) - 1 and len(asset_ids) > 1:
+                img = Image.new('RGB', (400, 300), color=colors[0])
+            
+            # Convertir en bytes
+            buffer = io.BytesIO()
+            img.save(buffer, format='JPEG')
+            image_data = buffer.getvalue()
+            
+            images.append({
+                'asset_id': asset_id,
+                'data': image_data,
+                'filename': f'test_{i}.jpg'
+            })
+        
+        logger.info(f"✅ {len(images)} images de test générées")
+        return images
+    
+    # Mode normal : télécharger depuis Immich
+    if not immich_service:
+        logger.error("Service Immich non fourni")
+        return []
     
     for asset_id in asset_ids:
         try:

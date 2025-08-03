@@ -128,7 +128,109 @@ class ImmichAPIService:
         except Exception as e:
             logger.error(f"❌ Erreur connexion Immich API: {e}")
             return {'connected': False, 'error': str(e)}
+    # Ajouter cette méthode dans la classe ImmichAPIService (dans src/services/immich_api_service.py)
+
+def download_asset_image(self, asset_id: str) -> Optional[bytes]:
+    """
+    Télécharger l'image originale d'un asset
     
+    Args:
+        asset_id: ID de l'asset Immich
+        
+    Returns:
+        Données binaires de l'image ou None si erreur
+    """
+    try:
+        # Endpoint pour récupérer l'image originale
+        # Note: L'endpoint exact peut varier selon la version d'Immich
+        endpoints = [
+            f'/api/asset/file/{asset_id}',      # v1.95+
+            f'/api/asset/{asset_id}/original',   # Versions antérieures
+            f'/api/assets/{asset_id}/original',  # Alternative
+        ]
+        
+        for endpoint in endpoints:
+            try:
+                response = requests.get(
+                    f"{self.proxy_url}{endpoint}",
+                    headers=self.headers,
+                    timeout=self.timeout,
+                    stream=True
+                )
+                
+                if response.status_code == 200:
+                    # Lire le contenu binaire
+                    image_data = response.content
+                    logger.debug(f"✅ Image téléchargée: {asset_id} ({len(image_data)} bytes)")
+                    return image_data
+                    
+            except Exception as e:
+                logger.debug(f"Endpoint {endpoint} échoué: {e}")
+                continue
+        
+        logger.warning(f"⚠️ Impossible de télécharger l'image {asset_id}")
+        return None
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur téléchargement image {asset_id}: {e}")
+        return None
+
+def get_asset_metadata(self, asset_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Récupérer les métadonnées d'un asset
+    
+    Args:
+        asset_id: ID de l'asset
+        
+    Returns:
+        Métadonnées ou None si erreur
+    """
+    try:
+        # Essayer différents endpoints
+        endpoints = [
+            f'/api/asset/{asset_id}',
+            f'/api/assets/{asset_id}'
+        ]
+        
+        for endpoint in endpoints:
+            try:
+                response = self._make_request('GET', endpoint)
+                if response:
+                    return response
+            except:
+                continue
+                
+        return None
+        
+    except Exception as e:
+        logger.error(f"❌ Erreur récupération métadonnées {asset_id}: {e}")
+        return None
+
+def get_album_assets(self, album_id: str) -> List[Dict[str, Any]]:
+    """
+    Récupérer tous les assets d'un album
+    
+    Args:
+        album_id: ID de l'album
+        
+    Returns:
+        Liste des assets
+    """
+    try:
+        # Endpoint pour récupérer les assets d'un album
+        response = self._make_request('GET', f'/api/album/{album_id}')
+        
+        if response and 'assets' in response:
+            return response['assets']
+        elif isinstance(response, list):
+            return response
+        else:
+            logger.warning(f"Format de réponse inattendu pour album {album_id}")
+            return []
+            
+    except Exception as e:
+        logger.error(f"❌ Erreur récupération assets album {album_id}: {e}")
+        return []
     def get_asset_faces(self, asset_id: str, use_cache: bool = True) -> Optional[AssetFacesInfo]:
         """
         Récupérer les informations de visages pour un asset

@@ -381,6 +381,8 @@ def main():
     final_stats = test_endpoint("GET", "/api/duplicates/status", "Statistiques finales")
     
     if final_stats:
+        print(json.dumps(final_stats, indent=2))
+
         stats = final_stats.get('stats', {})
         print(f"\n{Colors.MAGENTA}📊 Statistiques finales:{Colors.END}")
         print(f"  • Images traitées: {stats.get('total_images_processed', 0)}")
