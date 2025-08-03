@@ -35,44 +35,59 @@ def get_immich_assets(limit=20):
     print(f"\n{Colors.CYAN}📥 Récupération d'assets depuis Immich...{Colors.END}")
     
     headers = {
-        'X-API-Key': IMMICH_API_KEY,
+        'x-api-key': IMMICH_API_KEY,  # Minuscule !
         'Content-Type': 'application/json'
     }
     
     try:
-        # Essayer différents endpoints selon la version d'Immich
-        endpoints = [
-            '/api/asset?take={limit}',
-            '/api/assets?take={limit}',
-            '/api/asset/time-bucket?size=DAY&timeBucket=2024-01-01T00:00:00.000Z'
-        ]
+        # Pour récupérer des assets, on peut utiliser la recherche ou récupérer des albums
+        # Option 1: Récupérer les albums et prendre des assets dedans
+        print("  Tentative via albums...")
+        albums_url = f"{IMMICH_PROXY_URL}/api/album"
+        response = requests.get(albums_url, headers=headers)
         
-        for endpoint in endpoints:
-            url = f"{IMMICH_PROXY_URL}{endpoint.format(limit=limit)}"
-            response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            albums = response.json()
+            if albums and isinstance(albums, list):
+                print(f"  → {len(albums)} albums trouvés")
+                
+                # Prendre des assets du premier album non vide
+                for album in albums[:3]:  # Essayer les 3 premiers albums
+                    album_id = album.get('id')
+                    if album_id:
+                        # Récupérer les détails de l'album
+                        album_detail_url = f"{IMMICH_PROXY_URL}/api/album/{album_id}"
+                        album_response = requests.get(album_detail_url, headers=headers)
+                        
+                        if album_response.status_code == 200:
+                            album_data = album_response.json()
+                            assets = album_data.get('assets', [])
+                            
+                            if assets:
+                                print(f"{Colors.GREEN}✅ {len(assets)} assets trouvés dans l'album '{album.get('albumName', 'Sans nom')}'{Colors.END}")
+                                return assets[:limit]
+        
+        # Option 2: Si pas d'albums, essayer une recherche
+        print("  Tentative via recherche...")
+        search_url = f"{IMMICH_PROXY_URL}/api/search"
+        search_data = {
+            "q": "*",  # Recherche tout
+            "type": "IMAGE",
+            "page": 1,
+            "size": limit
+        }
+        
+        response = requests.post(search_url, headers=headers, json=search_data)
+        
+        if response.status_code == 200:
+            search_results = response.json()
+            assets = search_results.get('assets', {}).get('items', [])
             
-            if response.status_code == 200:
-                data = response.json()
-                
-                # Extraire les assets selon le format de réponse
-                if isinstance(data, list):
-                    assets = data
-                elif isinstance(data, dict) and 'assets' in data:
-                    assets = data['assets']
-                elif isinstance(data, dict) and 'buckets' in data:
-                    # Format time-bucket
-                    assets = []
-                    for bucket in data.get('buckets', [])[:3]:  # Prendre 3 buckets
-                        bucket_assets = bucket.get('assets', [])
-                        assets.extend(bucket_assets[:5])  # 5 assets par bucket
-                else:
-                    continue
-                
-                if assets:
-                    print(f"{Colors.GREEN}✅ {len(assets)} assets trouvés{Colors.END}")
-                    return assets[:limit]
+            if assets:
+                print(f"{Colors.GREEN}✅ {len(assets)} assets trouvés via recherche{Colors.END}")
+                return assets[:limit]
         
-        print(f"{Colors.RED}❌ Impossible de récupérer les assets{Colors.END}")
+        print(f"{Colors.YELLOW}⚠️  Aucun asset trouvé. Assurez-vous d'avoir des photos dans Immich.{Colors.END}")
         return []
         
     except Exception as e:
