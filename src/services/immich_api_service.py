@@ -143,8 +143,8 @@ class ImmichAPIService:
             # Endpoint pour récupérer l'image originale
             # Note: L'endpoint exact peut varier selon la version d'Immich
             endpoints = [
-                f'/api/asset/file/{asset_id}',      # v1.95+
-                f'/api/asset/{asset_id}/original',   # Versions antérieures
+                f'/api/assets/file/{asset_id}',      # v1.95+
+                f'/api/assets/{asset_id}/original',   # Versions antérieures
                 f'/api/assets/{asset_id}/original',  # Alternative
             ]
             
@@ -187,8 +187,8 @@ class ImmichAPIService:
         try:
             # Essayer différents endpoints
             endpoints = [
-                f'/api/asset/{asset_id}',
-                f'/api/assets/{asset_id}'
+                f'/api/assets/{asset_id}',
+                f'/api/asset/{asset_id}'
             ]
             
             for endpoint in endpoints:
@@ -255,7 +255,7 @@ class ImmichAPIService:
         
         try:
             # 1. Récupérer les données de l'asset
-            asset_data = self._make_request('GET', f'/api/asset/{asset_id}')
+            asset_data = self._make_request('GET', f'/api/assets/{asset_id}')
             if not asset_data:
                 logger.warning(f"⚠️  Asset {asset_id} non trouvé")
                 return None
@@ -297,8 +297,8 @@ class ImmichAPIService:
         # Note: L'endpoint exact peut varier selon la version d'Immich
         faces_endpoints = [
             f'/api/face?assetId={asset_id}',  # Endpoint moderne
-            f'/api/asset/{asset_id}/faces',   # Endpoint alternatif
-            f'/api/faces/asset/{asset_id}'    # Endpoint legacy
+            f'/api/assets/{asset_id}/faces',   # Endpoint alternatif
+            f'/api/faces/assets/{asset_id}'    # Endpoint legacy
         ]
         
         for endpoint in faces_endpoints:
