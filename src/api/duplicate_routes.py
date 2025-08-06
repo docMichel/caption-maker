@@ -279,8 +279,10 @@ def analyze_album_async(album_id):
         }), 500
 
 
+# Modification dans process_duplicate_detection_async() de duplicate_routes.py
+
 def process_duplicate_detection_async(request_id: str, data: Dict[str, Any], app):
-    """Traitement asynchrone de détection de doublons"""
+    """Traitement asynchrone de détection de doublons avec analyse qualité"""
     with app.app_context():
         sse_manager = get_sse_manager()
         
@@ -300,6 +302,9 @@ def process_duplicate_detection_async(request_id: str, data: Dict[str, Any], app
             if not duplicate_service or not immich_service:
                 raise ValueError("Services non disponibles")
             
+            # Passer le SSE manager au service de doublons
+            duplicate_service.set_sse_manager(sse_manager)
+            
             # Étape 1: Téléchargement des images
             sse_manager.broadcast_progress(
                 request_id, 'download', 5, 
@@ -312,13 +317,19 @@ def process_duplicate_detection_async(request_id: str, data: Dict[str, Any], app
                     # Télécharger l'image
                     image_data = immich_service.download_asset_image(asset_id)
                     if image_data:
+                        # Récupérer aussi les métadonnées
+                        metadata = immich_service.get_asset_metadata(asset_id) or {}
+                        
                         images.append({
                             'asset_id': asset_id,
-                            'data': image_data
+                            'data': image_data,
+                            'filename': metadata.get('originalFileName', ''),
+                            'date': metadata.get('fileCreatedAt', ''),
+                            'size': metadata.get('exifInfo', {}).get('fileSizeInByte', 0)
                         })
                     
                     # Progress update
-                    progress = 5 + int((i + 1) / total_images * 30)
+                    progress = 5 + int((i + 1) / total_images * 25)
                     sse_manager.broadcast_progress(
                         request_id, 'download', progress,
                         f'Téléchargement: {i + 1}/{total_images}'
@@ -335,74 +346,30 @@ def process_duplicate_detection_async(request_id: str, data: Dict[str, Any], app
                 'total': total_images
             })
             
-            # Étape 2: Encodage CLIP
-            sse_manager.broadcast_progress(
-                request_id, 'encoding', 40,
-                'Analyse des images avec CLIP...'
+            # Étape 2: Détection des doublons avec analyse qualité
+            # Le service gère maintenant tout internement (encodage, qualité, etc.)
+            groups = duplicate_service.find_duplicates(
+                images, 
+                threshold=threshold,
+                request_id=request_id  # Pour les notifications SSE
             )
             
-            # Encoder les images par batch
-            embeddings = []
-            batch_size = 10
-            
-            for i in range(0, len(images), batch_size):
-                batch = images[i:i + batch_size]
-                batch_embeddings = duplicate_service.encode_images_batch(batch)
-                embeddings.extend(batch_embeddings)
-                
-                progress = 40 + int(min(i + batch_size, len(images)) / len(images) * 30)
-                #progress = 40 + int((i + batch_size) / len(images) * 30)
-                sse_manager.broadcast_progress(
-                    request_id, 'encoding', progress,
-                    f'Encodage: {min(i + batch_size, len(images))}/{len(images)}'
-                )
-            
-            # Étape 3: Calcul des similarités
-            sse_manager.broadcast_progress(
-                request_id, 'similarity', 75,
-                'Calcul des similarités...'
-            )
-            
-            # Calculer la matrice de similarité
-            similarity_matrix = duplicate_service.compute_similarity_matrix(embeddings)
-            
-            # Étape 4: Regroupement
-            sse_manager.broadcast_progress(
-                request_id, 'grouping', 85,
-                'Regroupement des doublons...'
-            )
-            
-            groups = duplicate_service.group_similar_images(
-                images, similarity_matrix, threshold
-            )
-            
-            # Enrichir avec métadonnées Immich
-            for group in groups:
-                for img in group['images']:
-                    if 'data' in img:
-                        del img['data']
-                        
-                    asset_metadata = immich_service.get_asset_metadata(img['asset_id'])
-                    if asset_metadata:
-                        img.update({
-                            'filename': asset_metadata.get('originalFileName', ''),
-                            'date': asset_metadata.get('fileCreatedAt', ''),
-                            'size': asset_metadata.get('exifInfo', {}).get('fileSizeInByte', 0)
-                        })
-            
-            # Étape 5: Résultat final
+            # Étape 3: Résultat final
             sse_manager.broadcast_progress(
                 request_id, 'completion', 100,
                 f'{len(groups)} groupes de doublons trouvés!'
             )
             
+            # Calculer les statistiques
+            total_duplicates = sum(len(g['images']) - 1 for g in groups)
+            
             final_result = {
                 'success': True,
                 'groups': groups,
                 'total_groups': len(groups),
-                'total_duplicates': sum(len(g['images']) - 1 for g in groups),
+                'total_duplicates': total_duplicates,
                 'threshold': threshold,
-                'processing_time': time.time() - time.time()  # À implémenter
+                'stats': duplicate_service.get_stats()
             }
             
             sse_manager.broadcast_complete(request_id, final_result)
@@ -413,8 +380,6 @@ def process_duplicate_detection_async(request_id: str, data: Dict[str, Any], app
             logger.error(f"❌ Erreur détection async: {e}")
             logger.error(f"Traceback:\n{traceback.format_exc()}")
             sse_manager.broadcast_error(request_id, str(e))
-
-
 def process_album_analysis_async(request_id: str, data: Dict[str, Any], app):
     """Traitement asynchrone d'analyse d'album complet"""
     with app.app_context():
