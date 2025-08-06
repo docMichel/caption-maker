@@ -129,7 +129,7 @@ class ImmichAPIService:
             logger.error(f"❌ Erreur connexion Immich API: {e}")
             return {'connected': False, 'error': str(e)}
 
-    def download_asset_image(self, asset_id: str) -> Optional[bytes]:
+    def Xdownload_asset_image(self, asset_id: str) -> Optional[bytes]:
         """
         Télécharger l'image originale d'un asset
         
@@ -174,6 +174,71 @@ class ImmichAPIService:
             logger.error(f"❌ Erreur téléchargement image {asset_id}: {e}")
             return None
 
+    def download_asset_image(self, asset_id: str, size: str = "preview") -> Optional[bytes]:
+        """
+        Télécharger l'image d'un asset dans une taille optimisée
+        
+        Args:
+            asset_id: ID de l'asset Immich
+            size: Taille demandée ('thumbnail', 'preview', 'original')
+                - thumbnail: ~200-400px, idéal pour les listes
+                - preview: ~1440px, idéal pour l'analyse IA
+                - original: Taille originale (peut être très lourd)
+            
+        Returns:
+            Données binaires de l'image ou None si erreur
+        """
+        try:
+            # D'après la doc Immich, on peut utiliser le paramètre format
+            # pour obtenir différentes tailles
+            endpoints = []
+            
+            if size == "thumbnail":
+                endpoints = [
+                    f'/api/assets/{asset_id}/thumbnail',
+                    f'/api/asset/thumbnail/{asset_id}',
+                    f'/api/assets/{asset_id}/thumbnail?format=JPEG&size=400'
+                ]
+            elif size == "preview":
+                # Preview est idéal pour l'analyse IA : bon compromis qualité/taille
+                endpoints = [
+                    f'/api/assets/{asset_id}/thumbnail?format=JPEG&size=1440',
+                    f'/api/assets/{asset_id}/preview',
+                    f'/api/asset/preview/{asset_id}'
+                ]
+            else:  # original
+                endpoints = [
+                    f'/api/assets/{asset_id}/original',
+                    f'/api/asset/file/{asset_id}',
+                    f'/api/assets/{asset_id}/download'
+                ]
+            
+            for endpoint in endpoints:
+                try:
+                    response = requests.get(
+                        f"{self.proxy_url}{endpoint}",
+                        headers=self.headers,
+                        timeout=self.timeout,
+                        stream=True
+                    )
+                    
+                    if response.status_code == 200:
+                        # Lire le contenu binaire
+                        image_data = response.content
+                        logger.debug(f"✅ Image téléchargée ({size}): {asset_id} ({len(image_data)} bytes)")
+                        return image_data
+                        
+                except Exception as e:
+                    logger.debug(f"Endpoint {endpoint} échoué: {e}")
+                    continue
+            
+            logger.warning(f"⚠️ Impossible de télécharger l'image {asset_id} en taille {size}")
+            return None
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur téléchargement image {asset_id}: {e}")
+        return None 
+    
     def get_asset_metadata(self, asset_id: str) -> Optional[Dict[str, Any]]:
         """
         Récupérer les métadonnées d'un asset
