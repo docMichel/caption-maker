@@ -1,0 +1,451 @@
+#!/usr/bin/env python3
+"""
+📍 src/services/duplicate_detection_service.py
+
+Service de détection de doublons d'images utilisant CLIP
+Charge le modèle à la demande et identifie la meilleure image par groupe
+"""
+
+import logging
+import numpy as np
+from typing import Dict, List, Any, Optional, Tuple
+from dataclasses import dataclass
+import time
+import hashlib
+from PIL import Image
+import io
+from sklearn.metrics.pairwise import cosine_similarity
+from datetime import datetime
+import gc
+import torch
+import threading
+
+# Import du service de qualité
+from .image_quality_service import ImageQualityService
+
+logger = logging.getLogger(__name__)
+
+@dataclass
+class DuplicateGroup:
+    """Représente un groupe d'images similaires"""
+    group_id: str
+    images: List[Dict[str, Any]]
+    similarity_avg: float
+    best_image_id: str  # ID de la meilleure image du groupe
+    quality_analysis: Dict[str, Any]  # Analyse qualité détaillée
+
+
+class DuplicateDetectionService:
+    """
+    Service de détection de doublons avec gestion optimisée du modèle CLIP
+    """
+    
+    def __init__(self, cache_embeddings: bool = True, auto_unload_after: int = 300):
+        """
+        Args:
+            cache_embeddings: Mettre en cache les embeddings calculés
+            auto_unload_after: Temps en secondes avant déchargement auto du modèle
+        """
+        self.cache_embeddings = cache_embeddings
+        self.auto_unload_after = auto_unload_after
+        self.embeddings_cache = {}
+        
+        # État du modèle CLIP
+        self.clip_model = None
+        self.clip_available = False
+        self.model_loaded = False
+        self.model_loading = False
+        self.last_model_use = None
+        self.unload_timer = None
+        
+        # Service de qualité d'image
+        self.quality_service = ImageQualityService()
+        
+        # Configuration
+        self.model_name = 'clip-ViT-B-32'
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        
+        # Statistiques
+        self.stats = {
+            'total_images_processed': 0,
+            'total_groups_found': 0,
+            'cache_hits': 0,
+            'cache_misses': 0,
+            'model_loads': 0,
+            'model_unloads': 0,
+            'processing_time_total': 0.0
+        }
+        
+        # Vérifier la disponibilité de sentence-transformers
+        self._check_clip_availability()
+    
+    def _check_clip_availability(self):
+        """Vérifier si sentence-transformers est installé"""
+        try:
+            import sentence_transformers
+            self.clip_available = True
+            logger.info("✅ sentence-transformers disponible")
+        except ImportError:
+            self.clip_available = False
+            logger.error("❌ sentence-transformers non installé")
+    
+    def _load_model(self) -> bool:
+        """Charger le modèle CLIP à la demande"""
+        if self.model_loaded or self.model_loading:
+            return self.model_loaded
+        
+        if not self.clip_available:
+            return False
+        
+        self.model_loading = True
+        start_time = time.time()
+        
+        try:
+            from sentence_transformers import SentenceTransformer
+            
+            logger.info(f"🚀 Chargement du modèle CLIP ({self.model_name})...")
+            self.clip_model = SentenceTransformer(self.model_name)
+            
+            if self.device == "cuda":
+                self.clip_model = self.clip_model.to(self.device)
+            
+            self.model_loaded = True
+            self.last_model_use = time.time()
+            self.stats['model_loads'] += 1
+            
+            load_time = time.time() - start_time
+            logger.info(f"✅ Modèle CLIP chargé en {load_time:.1f}s")
+            
+            # Démarrer le timer de déchargement
+            self._reset_unload_timer()
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur chargement CLIP: {e}")
+            return False
+        finally:
+            self.model_loading = False
+    
+    def _unload_model(self):
+        """Décharger le modèle pour libérer la mémoire"""
+        if not self.model_loaded:
+            return
+        
+        logger.info("🗑️ Déchargement du modèle CLIP...")
+        
+        # Annuler le timer
+        if self.unload_timer:
+            self.unload_timer.cancel()
+            self.unload_timer = None
+        
+        # Libérer le modèle
+        if self.clip_model is not None:
+            del self.clip_model
+            self.clip_model = None
+        
+        # Forcer garbage collection
+        gc.collect()
+        
+        # Si GPU, libérer la mémoire CUDA
+        if self.device == "cuda" and torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        
+        self.model_loaded = False
+        self.stats['model_unloads'] += 1
+        logger.info("✅ Modèle CLIP déchargé")
+    
+    def _reset_unload_timer(self):
+        """Réinitialiser le timer de déchargement automatique"""
+        # Annuler l'ancien timer
+        if self.unload_timer:
+            self.unload_timer.cancel()
+        
+        # Créer un nouveau timer
+        self.unload_timer = threading.Timer(self.auto_unload_after, self._unload_model)
+        self.unload_timer.daemon = True
+        self.unload_timer.start()
+    
+    def get_model_info(self) -> Dict[str, Any]:
+        """Retourner les informations sur le modèle"""
+        info = {
+            'available': self.clip_available,
+            'loaded': self.model_loaded,
+            'loading': self.model_loading,
+            'model_name': self.model_name,
+            'device': self.device,
+            'cache_size': len(self.embeddings_cache),
+            'stats': self.stats
+        }
+        
+        if self.model_loaded and self.clip_model:
+            info['embedding_dimension'] = self.clip_model.get_sentence_embedding_dimension()
+            if self.last_model_use:
+                info['idle_seconds'] = int(time.time() - self.last_model_use)
+        
+        return info
+    
+    def encode_image(self, image_data: bytes, asset_id: Optional[str] = None) -> Optional[np.ndarray]:
+        """Encoder une image avec CLIP (avec chargement à la demande)"""
+        if not self.clip_available:
+            return None
+        
+        # Charger le modèle si nécessaire
+        if not self._load_model():
+            return None
+        
+        self.last_model_use = time.time()
+        self._reset_unload_timer()
+        
+        try:
+            # Vérifier le cache
+            if asset_id and self.cache_embeddings:
+                cache_key = self._get_cache_key(image_data, asset_id)
+                if cache_key in self.embeddings_cache:
+                    self.stats['cache_hits'] += 1
+                    return self.embeddings_cache[cache_key]
+            
+            # Charger l'image
+            image = Image.open(io.BytesIO(image_data)).convert('RGB')
+            
+            # Encoder avec CLIP
+            embedding = self.clip_model.encode(image)
+            
+            # Mettre en cache
+            if asset_id and self.cache_embeddings:
+                self.embeddings_cache[cache_key] = embedding
+                self.stats['cache_misses'] += 1
+            
+            return embedding
+            
+        except Exception as e:
+            logger.error(f"Erreur encodage image: {e}")
+            return None
+    
+    def find_duplicates(self, images: List[Dict[str, Any]], 
+                       threshold: float = 0.85,
+                       time_window_hours: Optional[int] = None) -> List[Dict[str, Any]]:
+        """
+        Pipeline complet de détection de doublons avec analyse qualité
+        
+        Returns:
+            Liste des groupes avec best_image_id pour chaque groupe
+        """
+        start_time = time.time()
+        
+        logger.info(f"🔍 Analyse de {len(images)} images")
+        
+        # 1. Encoder toutes les images
+        embeddings = self.encode_images_batch(images)
+        
+        # 2. Calculer la matrice de similarité
+        similarity_matrix = self.compute_similarity_matrix(embeddings)
+        
+        # 3. Regrouper les images similaires
+        groups = self.group_similar_images(
+            images, similarity_matrix, threshold, time_window_hours
+        )
+        
+        # 4. Pour chaque groupe, analyser la qualité et déterminer la meilleure
+        for group in groups:
+            self._analyze_group_quality(group)
+        
+        processing_time = time.time() - start_time
+        self.stats['processing_time_total'] += processing_time
+        
+        logger.info(f"✅ {len(groups)} groupes trouvés en {processing_time:.1f}s")
+        
+        return groups
+    
+    def encode_images_batch(self, images: List[Dict[str, Any]], 
+                           batch_size: int = 10) -> List[Optional[np.ndarray]]:
+        """Encoder plusieurs images par batch"""
+        embeddings = []
+        
+        for i in range(0, len(images), batch_size):
+            batch = images[i:i + batch_size]
+            
+            batch_embeddings = []
+            for img in batch:
+                embedding = self.encode_image(
+                    img['data'], 
+                    img.get('asset_id')
+                )
+                batch_embeddings.append(embedding)
+            
+            embeddings.extend(batch_embeddings)
+            
+            if i % (batch_size * 5) == 0:
+                logger.info(f"Encodage: {i + len(batch)}/{len(images)}")
+        
+        self.stats['total_images_processed'] += len(images)
+        return embeddings
+    
+    def compute_similarity_matrix(self, embeddings: List[np.ndarray]) -> np.ndarray:
+        """Calculer la matrice de similarité"""
+        if not embeddings:
+            return np.array([])
+        
+        valid_embeddings = [e for e in embeddings if e is not None]
+        
+        if not valid_embeddings:
+            return np.array([])
+        
+        embeddings_matrix = np.vstack(valid_embeddings)
+        similarity_matrix = cosine_similarity(embeddings_matrix)
+        
+        return similarity_matrix
+    
+    def group_similar_images(self, images: List[Dict[str, Any]], 
+                           similarity_matrix: np.ndarray,
+                           threshold: float = 0.85,
+                           time_window_hours: Optional[int] = None) -> List[Dict[str, Any]]:
+        """Regrouper les images similaires"""
+        if len(images) == 0 or similarity_matrix.size == 0:
+            return []
+        
+        groups = []
+        processed = set()
+        
+        for i in range(len(images)):
+            if i in processed:
+                continue
+            
+            group_indices = [i]
+            processed.add(i)
+            
+            # Chercher images similaires
+            for j in range(i + 1, len(images)):
+                if j in processed:
+                    continue
+                
+                if similarity_matrix[i][j] >= threshold:
+                    # Vérifier fenêtre temporelle si demandée
+                    if time_window_hours and not self._check_time_proximity(
+                        images[i], images[j], time_window_hours
+                    ):
+                        continue
+                    
+                    group_indices.append(j)
+                    processed.add(j)
+            
+            # Créer le groupe si plus d'une image
+            if len(group_indices) > 1:
+                group_images = [images[idx] for idx in group_indices]
+                
+                # Calculer similarité moyenne
+                similarities = []
+                for k in range(len(group_indices)):
+                    for l in range(k + 1, len(group_indices)):
+                        similarities.append(
+                            similarity_matrix[group_indices[k]][group_indices[l]]
+                        )
+                
+                avg_similarity = np.mean(similarities) if similarities else 0.0
+                
+                group = {
+                    'group_id': f'group_{len(groups)}',
+                    'images': group_images,
+                    'similarity_avg': float(avg_similarity),
+                    'size': len(group_images)
+                }
+                
+                groups.append(group)
+        
+        self.stats['total_groups_found'] += len(groups)
+        return groups
+    
+    def _analyze_group_quality(self, group: Dict[str, Any]):
+        """Analyser la qualité des images d'un groupe et déterminer la meilleure"""
+        images = group['images']
+        
+        # Créer des fichiers temporaires pour l'analyse
+        temp_files = []
+        try:
+            for img in images:
+                import tempfile
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as f:
+                    f.write(img['data'])
+                    temp_files.append(f.name)
+                    img['temp_path'] = f.name
+            
+            # Analyser avec le service de qualité
+            comparison = self.quality_service.compare_images(temp_files)
+            
+            # Identifier la meilleure image
+            best_result = comparison['best_image']
+            best_filename = best_result['filename']
+            
+            # Trouver l'asset_id correspondant
+            for i, temp_path in enumerate(temp_files):
+                if temp_path.endswith(best_filename):
+                    group['best_image_id'] = images[i]['asset_id']
+                    break
+            
+            # Ajouter l'analyse de qualité
+            group['quality_analysis'] = {
+                'recommendation': comparison['recommendation'],
+                'scores': {}
+            }
+            
+            # Ajouter les scores de qualité pour chaque image
+            for result in comparison['all_results']:
+                for i, temp_path in enumerate(temp_files):
+                    if temp_path.endswith(result['filename']):
+                        asset_id = images[i]['asset_id']
+                        metrics = result['metrics']
+                        group['quality_analysis']['scores'][asset_id] = {
+                            'overall': metrics.overall_score,
+                            'sharpness': metrics.sharpness_score,
+                            'exposure': metrics.exposure_score,
+                            'resolution': f"{metrics.megapixels}MP"
+                        }
+                        break
+            
+        finally:
+            # Nettoyer les fichiers temporaires
+            import os
+            for temp_file in temp_files:
+                try:
+                    os.unlink(temp_file)
+                except:
+                    pass
+    
+    def _check_time_proximity(self, img1: Dict, img2: Dict, hours: int) -> bool:
+        """Vérifier si deux images sont dans la fenêtre temporelle"""
+        try:
+            date1 = datetime.fromisoformat(img1.get('date', ''))
+            date2 = datetime.fromisoformat(img2.get('date', ''))
+            
+            time_diff = abs((date1 - date2).total_seconds()) / 3600
+            return time_diff <= hours
+            
+        except Exception:
+            return True
+    
+    def _get_cache_key(self, image_data: bytes, asset_id: str) -> str:
+        """Générer une clé de cache unique"""
+        data_hash = hashlib.md5(image_data[:1024]).hexdigest()[:8]
+        return f"{asset_id}_{data_hash}"
+    
+    def clear_cache(self):
+        """Vider le cache des embeddings"""
+        self.embeddings_cache.clear()
+        logger.info("🗑️ Cache embeddings vidé")
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """Retourner les statistiques d'utilisation"""
+        cache_hit_rate = 0
+        if self.stats['cache_hits'] + self.stats['cache_misses'] > 0:
+            cache_hit_rate = (
+                self.stats['cache_hits'] / 
+                (self.stats['cache_hits'] + self.stats['cache_misses']) * 100
+            )
+        
+        return {
+            **self.stats,
+            'cache_size': len(self.embeddings_cache),
+            'cache_hit_rate': f"{cache_hit_rate:.1f}%",
+            'clip_available': self.clip_available,
+            'model_loaded': self.model_loaded
+        }
