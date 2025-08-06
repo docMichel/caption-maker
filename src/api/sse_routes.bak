@@ -298,57 +298,13 @@ def process_generation_async(request_id: str, data: Dict[str, Any], app):
             services = app.config.get('SERVICES', {})
             ai_service = services.get('ai_service')
             geo_service = services.get('geo_service')
-                        
-            immich_service = services.get('immich_service')
-
+            
             if not ai_service or not geo_service:
-                error_msg = "Services IA ou Geo non disponibles"
-                logger.error(f"❌ {error_msg}")
-                sse_manager.broadcast_error(request_id, error_msg)
-                return
+                raise ValueError("Services non disponibles")
             
             # Étape 1: Préparation
             sse_manager.broadcast_progress(request_id, 'preparation', 5, 'Préparation de l\'image...')
             
-            # gere image depuis base64 OU depuis immich_asset
-            image_base64 = data.get('image_base64')
-            
-            if not image_base64 and immich_service:
-                # Récupérer l'image depuis Immich
-                logger.info(f"📥 Téléchargement de l'image depuis Immich pour {asset_id}")
-                sse_manager.broadcast_progress(request_id, 'preparation', 8, 'Téléchargement depuis Immich...')
-                
-                try:
-                    # Télécharger l'image binaire
-                    image_data = immich_service.download_asset_image(asset_id)
-                    
-                    if image_data:
-                        # Encoder en base64
-                        import base64
-                        image_base64 = base64.b64encode(image_data).decode('utf-8')
-                        # Ajouter le préfixe data URL
-                        image_base64 = f"data:image/jpeg;base64,{image_base64}"
-                        logger.info(f"✅ Image téléchargée depuis Immich ({len(image_data)} bytes)")
-                    else:
-                        error_msg = f"Impossible de télécharger l'image {asset_id} depuis Immich"
-                        logger.error(f"❌ {error_msg}")
-                        sse_manager.broadcast_error(request_id, error_msg)
-                        return
-                        
-                except Exception as e:
-                    logger.error(f"❌ Erreur téléchargement Immich: {e}")
-                    sse_manager.broadcast_error(request_id, f"Erreur téléchargement image: {str(e)}")
-                    return
-            
-            elif not image_base64:
-                # Ni base64 ni service Immich disponible
-                error_msg = "Image requise: soit image_base64, soit service Immich configuré"
-                logger.error(f"❌ {error_msg}")
-                sse_manager.broadcast_error(request_id, error_msg)
-                return
-
-
-
             # Sauvegarder l'image
             image_processor = get_image_processor()
             temp_image_path = image_processor.save_base64_image(image_base64, asset_id)
