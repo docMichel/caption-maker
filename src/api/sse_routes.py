@@ -284,7 +284,7 @@ def process_generation_async(request_id: str, data: Dict[str, Any], app):
             
             # Extraire les paramètres
             asset_id = data['asset_id']
-            image_base64 = data['image_base64']
+            # image_base64 = data['image_base64']
             language = data.get('language', 'français')
             style = data.get('style', 'creative')
             latitude = data.get('latitude')
