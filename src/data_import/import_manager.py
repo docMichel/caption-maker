@@ -11,9 +11,9 @@ class ImportManager:
         self.db_config = db_config
         self.country_detector = CountryDetector()
         self.importers = {
-            'geonames': GeoNamesImporter(db_config),
-            'unesco': UNESCOImporter(db_config),
-            'osm': OSMImporter(db_config)
+   #         'geonames': GeoNamesImporter(db_config),
+   #         'unesco': UNESCOImporter(db_config),
+   #         'osm': OSMImporter(db_config)
         }
         
     def ensure_data_for_location(self, lat: float, lon: float) -> str:
@@ -22,7 +22,7 @@ class ImportManager:
         country_code = self.country_detector.detect_country(lat, lon)
         if not country_code:
             logger.warning(f"Impossible de détecter le pays pour {lat}, {lon}")
-            return "XX"
+            return "NC"
         
         # 2. Vérifier si déjà importé
         if not self._is_country_imported(country_code):
