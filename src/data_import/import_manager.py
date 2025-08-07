@@ -94,4 +94,5 @@ class ImportManager:
         
         conn.commit()
         cursor.close()
-        conn.close()        logger.info("ImportManager créé")
+        conn.close()        
+        logger.info("ImportManager créé")
