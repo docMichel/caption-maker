@@ -680,7 +680,7 @@ class GeoService:
                 )
                 UNION ALL
                 (
-                    SELECT 'geonames' as source, id, name, latitude, longitude, country_code,
+                    SELECT 'geonames' as source, geonameid as id, name, latitude, longitude, country_code,
                            feature_code as type, population
                     FROM geonames 
                     WHERE (name LIKE %s OR ascii_name LIKE %s) 
