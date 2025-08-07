@@ -89,7 +89,43 @@ class ImportManager:
             cursor.close()
             conn.close()
 
+    
+    
+    
+    
     def _import_country_data(self, country_code: str):
+        """Importer toutes les données pour un pays"""
+        logger.info(f"🌍 Import des données pour {country_code}")
+        logger.info(f"   Importers disponibles: {list(self.importers.keys())}")
+        
+        stats = {}
+        success = False
+        
+        # Liste des importers dans l'ordre
+        import_order = ['geonames', 'cultural', 'unesco', 'osm']
+        
+        for importer_name in import_order:
+            if importer_name in self.importers:
+                try:
+                    logger.info(f"   📥 Lancement import {importer_name}...")
+                    count = self.importers[importer_name].import_country(country_code)
+                    stats[importer_name] = count
+                    
+                    if count > 0:
+                        success = True
+                        logger.info(f"   ✅ {count} entrées importées depuis {importer_name}")
+                    else:
+                        logger.warning(f"   ⚠️ Aucune donnée importée depuis {importer_name}")
+                        
+                except Exception as e:
+                    logger.error(f"   ❌ Erreur import {importer_name}: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    stats[importer_name] = 0
+            else:
+                logger.warning(f"   ⚠️ Importer {importer_name} non disponible")
+    
+    def X_import_country_data(self, country_code: str):
         """Importer toutes les données pour un pays"""
         logger.info(f"🌍 Import des données pour {country_code}")
         logger.info(f"   Importers disponibles: {list(self.importers.keys())}")
