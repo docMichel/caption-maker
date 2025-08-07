@@ -1,7 +1,7 @@
 # src/data_import/import_manager.py
 import logging
 from typing import Optional, Set
-#from .country_detector import CountryDetector
+from .country_detector import CountryDetector
 #rom .importers import GeoNamesImporter, UNESCOImporter, OSMImporter
 
 logger = logging.getLogger(__name__)
@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 class ImportManager:
     def __init__(self, db_config: dict):
         self.db_config = db_config
-        self.country_detector = None #CountryDetector()
+        self.country_detector = CountryDetector()
         self.importers = {
    #         'geonames': GeoNamesImporter(db_config),
    #         'unesco': UNESCOImporter(db_config),
