@@ -13,11 +13,15 @@ class ImportManager:
         try:
             from .importers.geonames_importer import GeoNamesImporter
             from .importers.unesco_importer import UNESCOImporter
+            from .importers.cultural_importer  import CulturalImporter
+
             # from .importers.osm_importer import OSMImporter  # Si pas encore créé
             
             self.importers = {
                 'geonames': GeoNamesImporter(db_config),
                 'unesco': UNESCOImporter(db_config),
+                'cultural': CulturalImporter(db_config)  # AJOUTER
+
                 # 'osm': OSMImporter(db_config)
             }
         except ImportError as e:
@@ -109,7 +113,20 @@ class ImportManager:
                 import traceback
                 traceback.print_exc()
                 stats['cities'] = 0
-        
+                
+        # 3. Sites culturels (après GeoNames)
+        if 'cultural' in self.importers and 'geonames' in self.importers:
+            try:
+                logger.info(f"   Lancement import sites culturels...")
+                count = self.importers['cultural'].import_country(country_code)
+                stats['cultural'] = count
+                if count > 0:
+                    success = True
+                    logger.info(f"   ✅ {count} sites culturels importés")
+            except Exception as e:
+                logger.error(f"   ❌ Erreur import culturel: {e}")
+                stats['cultural'] = 0
+
         # 2. UNESCO (même logique)
         if 'unesco' in self.importers:
             try:
@@ -128,7 +145,7 @@ class ImportManager:
         else:
             logger.error(f"   ❌ Aucun import réussi pour {country_code}, pas d'enregistrement")
 
-            
+
     def _record_import(self, country_code: str, stats: dict):
         """Enregistrer qu'un pays a été importé"""
         # Ne pas enregistrer si rien n'a été importé
@@ -143,16 +160,23 @@ class ImportManager:
         cursor = conn.cursor()
         
         try:
+      
             cursor.execute("""
                 INSERT INTO country_imports 
-                (country_code, cities_count, unesco_count) 
-                VALUES (%s, %s, %s)
+                (country_code, cities_count, unesco_count, cultural_count, osm_count) 
+                VALUES (%s, %s, %s, %s, %s)
                 ON DUPLICATE KEY UPDATE
                 cities_count = VALUES(cities_count),
                 unesco_count = VALUES(unesco_count),
+                cultural_count = VALUES(cultural_count),
+                osm_count = VALUES(osm_count),
                 last_updated = CURRENT_DATE
-            """, (country_code, stats.get('cities', 0), stats.get('unesco', 0)))
-            
+            """, (country_code, 
+                stats.get('cities', 0), 
+                stats.get('unesco', 0),
+                stats.get('cultural', 0),
+                stats.get('osm', 0)))
+
             conn.commit()
             logger.info(f"   ✅ Import enregistré pour {country_code}: {total_imported} entrées")
             
