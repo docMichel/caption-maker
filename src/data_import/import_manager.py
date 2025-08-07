@@ -47,7 +47,7 @@ class ImportManager:
             logger.info(f"   ✅ Données déjà importées pour {country_code}")
             
         return country_code
-    
+
     def _is_country_imported(self, country_code: str) -> bool:
         """Vérifier si un pays est déjà importé"""
         import mysql.connector
@@ -55,17 +55,36 @@ class ImportManager:
         conn = mysql.connector.connect(**self.db_config)
         cursor = conn.cursor()
         
-        cursor.execute(
-            "SELECT COUNT(*) FROM country_imports WHERE country_code = %s",
-            (country_code,)
-        )
-        result = cursor.fetchone()[0]
-        
-        cursor.close()
-        conn.close()
-        
-        return result > 0
-    
+        try:
+            # D'abord vérifier si la table existe
+            cursor.execute("""
+                SELECT COUNT(*) 
+                FROM information_schema.tables 
+                WHERE table_schema = %s 
+                AND table_name = 'country_imports'
+            """, (self.db_config['database'],))
+            
+            if cursor.fetchone()[0] == 0:
+                logger.info("   Table country_imports n'existe pas")
+                return False
+            
+            # Ensuite vérifier si le pays est importé
+            cursor.execute(
+                "SELECT COUNT(*) FROM country_imports WHERE country_code = %s",
+                (country_code,)
+            )
+            result = cursor.fetchone()[0]
+            
+            logger.info(f"   country_imports check: {result} entrées pour {country_code}")
+            return result > 0
+            
+        except Exception as e:
+            logger.error(f"   Erreur vérification import: {e}")
+            return False
+        finally:
+            cursor.close()
+            conn.close()
+
     def _import_country_data(self, country_code: str):
         """Importer toutes les données pour un pays"""
         logger.info(f"🌍 Import des données pour {country_code}")
