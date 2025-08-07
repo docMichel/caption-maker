@@ -175,60 +175,82 @@ class GeoService:
             longitude=longitude,
             search_radius_km=radius_km
         )
-        
+
         try:
             self.connect_db()
             
             # 1. Rechercher sites UNESCO proches
-            location.unesco_sites = self._search_unesco_sites(latitude, longitude, radius_km)
-            if location.unesco_sites:
-                location.data_sources.append('unesco_mysql')
-                location.confidence_score += 0.4
-                logger.info(f"   ✅ {len(location.unesco_sites)} sites UNESCO trouvés")
+            try:
+                location.unesco_sites = self._search_unesco_sites(latitude, longitude, radius_km)
+                if location.unesco_sites:
+                    location.data_sources.append('unesco_mysql')
+                    location.confidence_score += 0.4
+                    logger.info(f"   ✅ {len(location.unesco_sites)} sites UNESCO trouvés")
+            except Exception as e:
+                logger.warning(f"   ⚠️ Erreur recherche UNESCO: {e}")
             
             # 2. Rechercher sites culturels
-            location.cultural_sites = self._search_cultural_sites(latitude, longitude, radius_km)
-            if location.cultural_sites:
-                location.data_sources.append('cultural_mysql')
-                location.confidence_score += 0.3
-                logger.info(f"   ✅ {len(location.cultural_sites)} sites culturels trouvés")
+            try:
+                location.cultural_sites = self._search_cultural_sites(latitude, longitude, radius_km)
+                if location.cultural_sites:
+                    location.data_sources.append('cultural_mysql')
+                    location.confidence_score += 0.3
+                    logger.info(f"   ✅ {len(location.cultural_sites)} sites culturels trouvés")
+            except Exception as e:
+                logger.warning(f"   ⚠️ Erreur recherche culturelle: {e}")
             
             # 3. Rechercher villes importantes proches
-            location.major_cities = self._search_major_cities(latitude, longitude, radius_km * 2)
-            if location.major_cities:
-                location.data_sources.append('cities_mysql')
-                location.confidence_score += 0.2
-                # Utiliser la ville la plus proche pour l'adresse
-                closest_city = location.major_cities[0]
-                location.city = closest_city['name']
-                location.country_code = closest_city['country_code']
-                logger.info(f"   ✅ Ville principale: {location.city}")
-            
-            # 4. Enrichir avec données administratives (Nominatim)
-            nominatim_data = self._get_nominatim_data(latitude, longitude)
-            if nominatim_data:
-                self._merge_nominatim_data(location, nominatim_data)
-                location.data_sources.append('nominatim')
-                location.confidence_score += 0.3
-                logger.info(f"   ✅ Nominatim: {location.formatted_address}")
-            
-            # 5. Rechercher POIs contextuels proches (optionnel)
-            if location.confidence_score < 0.7:  # Seulement si peu d'info
-                location.nearby_pois = self._search_nearby_pois(latitude, longitude, radius_km / 2)
-                if location.nearby_pois:
-                    location.data_sources.append('overpass')
+            try:
+                location.major_cities = self._search_major_cities(latitude, longitude, radius_km * 2)
+                if location.major_cities:
+                    location.data_sources.append('cities_mysql')
                     location.confidence_score += 0.2
-                    logger.info(f"   ✅ {len(location.nearby_pois)} POIs trouvés")
+                    closest_city = location.major_cities[0]
+                    location.city = closest_city['name']
+                    location.country_code = closest_city.get('country_code', 'NC')
+                    logger.info(f"   ✅ Ville principale: {location.city}")
+            except Exception as e:
+                logger.warning(f"   ⚠️ Erreur recherche villes: {e}")
+            
+            # 4. IMPORTANT: Toujours essayer Nominatim si peu d'infos locales
+            if location.confidence_score < 0.5 or not location.city:
+                logger.info("   🌐 Fallback sur Nominatim (données locales insuffisantes)")
+                nominatim_data = self._get_nominatim_data(latitude, longitude)
+                if nominatim_data:
+                    self._merge_nominatim_data(location, nominatim_data)
+                    location.data_sources.append('nominatim')
+                    location.confidence_score = max(location.confidence_score + 0.3, 0.5)
+                    logger.info(f"   ✅ Nominatim: {location.formatted_address}")
+            
+            # 5. Rechercher POIs contextuels si toujours peu d'info
+            if location.confidence_score < 0.7:
+                try:
+                    location.nearby_pois = self._search_nearby_pois(latitude, longitude, radius_km / 2)
+                    if location.nearby_pois:
+                        location.data_sources.append('overpass')
+                        location.confidence_score += 0.2
+                        logger.info(f"   ✅ {len(location.nearby_pois)} POIs trouvés")
+                except Exception as e:
+                    logger.warning(f"   ⚠️ Erreur recherche POIs: {e}")
             
             # 6. Finaliser les données
             self._finalize_location_data(location)
             
         except Exception as e:
             logger.error(f"❌ Erreur durant la géolocalisation: {e}")
-            # En cas d'erreur, au moins renvoyer les coordonnées
-            location.formatted_address = f"{latitude:.4f}, {longitude:.4f}"
-            location.confidence_score = 0.1
-            
+            # En cas d'erreur totale, utiliser Nominatim directement
+            try:
+                logger.info("🌐 Tentative directe Nominatim après erreur DB")
+                nominatim_data = self._get_nominatim_data(latitude, longitude)
+                if nominatim_data:
+                    self._merge_nominatim_data(location, nominatim_data)
+                    location.data_sources = ['nominatim_fallback']
+                    location.confidence_score = 0.3
+            except:
+                location.formatted_address = f"{latitude:.4f}, {longitude:.4f}"
+                location.confidence_score = 0.1
+        
+
         finally:
             self.disconnect_db()
         
