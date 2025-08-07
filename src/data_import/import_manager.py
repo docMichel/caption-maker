@@ -1,21 +1,22 @@
 # src/data_import/import_manager.py
 import logging
 from typing import Optional, Set
-from .country_detector import CountryDetector
-from .importers import GeoNamesImporter, UNESCOImporter, OSMImporter
+#from .country_detector import CountryDetector
+#rom .importers import GeoNamesImporter, UNESCOImporter, OSMImporter
 
 logger = logging.getLogger(__name__)
 
 class ImportManager:
     def __init__(self, db_config: dict):
         self.db_config = db_config
-        self.country_detector = CountryDetector()
+        self.country_detector = None #CountryDetector()
         self.importers = {
    #         'geonames': GeoNamesImporter(db_config),
    #         'unesco': UNESCOImporter(db_config),
    #         'osm': OSMImporter(db_config)
         }
-        
+        logger.info("ImportManager créé")
+
     def ensure_data_for_location(self, lat: float, lon: float) -> str:
         """S'assurer que les données sont disponibles pour cette localisation"""
         # 1. Détecter le pays
@@ -93,4 +94,4 @@ class ImportManager:
         
         conn.commit()
         cursor.close()
-        conn.close()
+        conn.close()        logger.info("ImportManager créé")
