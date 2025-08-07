@@ -2,7 +2,12 @@
 #!/usr/bin/env python3
 
 import sys
-sys.path.append('.')  # Pour trouver src
+import os
+# AJOUTER CES LIGNES AU DÉBUT
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+
+from services.geo_service import GeoService
+import logging
 
 from src.services.geo_service import GeoService
 import logging
