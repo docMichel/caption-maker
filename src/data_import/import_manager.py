@@ -91,77 +91,71 @@ class ImportManager:
         logger.info(f"   Importers disponibles: {list(self.importers.keys())}")
         
         stats = {}
+        success = False  # Flag pour savoir si au moins un import a réussi
         
         # 1. GeoNames
         if 'geonames' in self.importers:
             try:
                 logger.info(f"   Lancement import GeoNames...")
-                stats['cities'] = self.importers['geonames'].import_country(country_code)
-                logger.info(f"   ✅ {stats['cities']} lieux importés depuis GeoNames")
+                count = self.importers['geonames'].import_country(country_code)
+                stats['cities'] = count
+                if count > 0:
+                    success = True
+                    logger.info(f"   ✅ {count} lieux importés depuis GeoNames")
+                else:
+                    logger.warning(f"   ⚠️ Aucune donnée GeoNames importée")
             except Exception as e:
                 logger.error(f"   ❌ Erreur import GeoNames: {e}")
                 import traceback
                 traceback.print_exc()
                 stats['cities'] = 0
-        else:
-            logger.warning("   ⚠️ GeoNamesImporter non disponible")
         
-        # 2. UNESCO
+        # 2. UNESCO (même logique)
         if 'unesco' in self.importers:
             try:
-                logger.info(f"   Lancement import UNESCO...")
-                stats['unesco'] = self.importers['unesco'].import_country(country_code)
-                logger.info(f"   ✅ {stats['unesco']} sites UNESCO importés")
+                count = self.importers['unesco'].import_country(country_code)
+                stats['unesco'] = count
+                if count > 0:
+                    success = True
             except Exception as e:
                 logger.error(f"   ❌ Erreur import UNESCO: {e}")
                 stats['unesco'] = 0
+        
+        # 3. Enregistrer SEULEMENT si au moins un import a réussi
+        if success:
+            logger.info(f"   Enregistrement import: {stats}")
+            self._record_import(country_code, stats)
         else:
-            logger.warning("   ⚠️ UNESCOImporter non disponible")
-        
-        # 3. Enregistrer l'import
-        logger.info(f"   Enregistrement import: {stats}")
-        self._record_import(country_code, stats)
-    def X_import_country_data(self, country_code: str):
-        """Importer toutes les données pour un pays"""
-        stats = {}
-        
-        # 1. GeoNames
-        try:
-            stats['cities'] = self.importers['geonames'].import_country(country_code)
-            logger.info(f"✅ {stats['cities']} lieux importés depuis GeoNames")
-        except Exception as e:
-            logger.error(f"❌ Erreur import GeoNames: {e}")
-            stats['cities'] = 0
-        
-        # 2. UNESCO
-        try:
-            stats['unesco'] = self.importers['unesco'].import_country(country_code)
-            logger.info(f"✅ {stats['unesco']} sites UNESCO importés")
-        except Exception as e:
-            logger.error(f"❌ Erreur import UNESCO: {e}")
-            stats['unesco'] = 0
-        
-        # 3. Enregistrer l'import
-        self._record_import(country_code, stats)
-    
+            logger.error(f"   ❌ Aucun import réussi pour {country_code}, pas d'enregistrement")
+
+            
     def _record_import(self, country_code: str, stats: dict):
         """Enregistrer qu'un pays a été importé"""
+        # Ne pas enregistrer si rien n'a été importé
+        total_imported = stats.get('cities', 0) + stats.get('unesco', 0)
+        if total_imported == 0:
+            logger.warning(f"   ⚠️ Aucune donnée importée pour {country_code}, pas d'enregistrement")
+            return
+            
         import mysql.connector
         
         conn = mysql.connector.connect(**self.db_config)
         cursor = conn.cursor()
         
-        cursor.execute("""
-            INSERT INTO country_imports 
-            (country_code, cities_count, unesco_count) 
-            VALUES (%s, %s, %s)
-            ON DUPLICATE KEY UPDATE
-            cities_count = VALUES(cities_count),
-            unesco_count = VALUES(unesco_count),
-            last_updated = CURRENT_DATE
-        """, (country_code, stats.get('cities', 0), stats.get('unesco', 0)))
-        
-        conn.commit()
-        cursor.close()
-        conn.close()        
-        logger.info("ImportManager créé")
+        try:
+            cursor.execute("""
+                INSERT INTO country_imports 
+                (country_code, cities_count, unesco_count) 
+                VALUES (%s, %s, %s)
+                ON DUPLICATE KEY UPDATE
+                cities_count = VALUES(cities_count),
+                unesco_count = VALUES(unesco_count),
+                last_updated = CURRENT_DATE
+            """, (country_code, stats.get('cities', 0), stats.get('unesco', 0)))
+            
+            conn.commit()
+            logger.info(f"   ✅ Import enregistré pour {country_code}: {total_imported} entrées")
+            
+        finally:
+            cursor.close()
+            conn.close()

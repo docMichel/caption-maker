@@ -339,21 +339,27 @@ class GeoService:
         """Rechercher les villes importantes dans le rayon spécifié"""
         query = """
             SELECT 
-                id, name, ascii_name, latitude, longitude, country_code, population,
+                geonameid as id, 
+                name, 
+                asciiname as ascii_name, 
+                latitude, 
+                longitude, 
+                country_code, 
+                population,
                 haversine_distance(%s, %s, latitude, longitude) as distance_km
             FROM geonames 
             WHERE feature_class = 'P' 
-              AND feature_code IN ('PPL', 'PPLA', 'PPLA2', 'PPLA3', 'PPLC')
-              AND population >= 1000
-              AND haversine_distance(%s, %s, latitude, longitude) <= %s
+            AND feature_code IN ('PPL', 'PPLA', 'PPLA2', 'PPLA3', 'PPLC')
+            AND population >= 1000
+            AND haversine_distance(%s, %s, latitude, longitude) <= %s
             ORDER BY 
-              CASE 
-                WHEN feature_code = 'PPLC' THEN 1  -- Capitales en premier
-                WHEN feature_code = 'PPLA' THEN 2  -- Puis centres admin
+            CASE 
+                WHEN feature_code = 'PPLC' THEN 1
+                WHEN feature_code = 'PPLA' THEN 2
                 ELSE 3 
-              END,
-              population DESC,
-              distance_km ASC
+            END,
+            population DESC,
+            distance_km ASC
             LIMIT 5
         """
         
@@ -366,7 +372,7 @@ class GeoService:
             city['type'] = self._get_city_type(city.get('feature_code', 'PPL'))
         
         return cities
-    
+
     def _calculate_site_relevance(self, site: Dict, site_type: str) -> float:
         """Calculer un score de pertinence pour un site"""
         relevance = 1.0
