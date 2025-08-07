@@ -175,6 +175,9 @@ class GeoService:
                 logger.info(f"📍 Pays détecté: {country_code}")
             except Exception as e:
                 logger.warning(f"⚠️ Import auto échoué: {e}")
+                import traceback
+                traceback.print_exc()
+
         
         # Initialiser le résultat
         location = GeoLocation(
