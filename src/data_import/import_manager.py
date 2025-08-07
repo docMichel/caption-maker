@@ -14,8 +14,7 @@ class ImportManager:
             from .importers.geonames_importer import GeoNamesImporter
             from .importers.unesco_importer import UNESCOImporter
             from .importers.cultural_importer  import CulturalImporter
-
-            from .importers.osm_importer import OSMImporter  # Si pas encore créé
+            from .importers.osm_importer import OSMImporter
             
             self.importers = {
                 'geonames': GeoNamesImporter(db_config),
