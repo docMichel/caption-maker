@@ -227,6 +227,8 @@ class UNESCOImporter:
             count = 0
             for site in sites:
                 try:
+                    logger.debug(f"   Insertion site: {site.get('name')} - {site.get('iso_code')}")
+
                     # Extraire l'année d'inscription
                     year = None
                     if site.get('date_inscribed'):
@@ -264,9 +266,14 @@ class UNESCOImporter:
                     cursor.execute(insert_query, values)
                     if cursor.rowcount > 0:
                         count += 1
-                        
+                    else:
+                       logger.warning(f"   ⚠️ Aucune ligne insérée pour {site.get('name')}")
+                
+
                 except Exception as e:
                     logger.warning(f"   ⚠️ Erreur insertion site {site.get('name')}: {e}")
+                    logger.debug(f"      Valeurs: {values}")
+
                     continue
             
             conn.commit()

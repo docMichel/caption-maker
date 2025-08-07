@@ -471,10 +471,12 @@ class GeoService:
             ORDER BY distance_km ASC
             LIMIT 20
         """
-        
+        logger.debug(f"   Requête cultural_sites avec rayon {radius_km}km")
+
         self.cursor.execute(query, (lat, lon, lat, lon, radius_km))
         sites = self.cursor.fetchall()
-        
+        logger.debug(f"   Trouvé {len(sites)} sites culturels dans la DB")
+
         for site in sites:
             site['relevance_score'] = self._calculate_site_relevance(site, 'cultural')
             site['source'] = 'cultural_db'

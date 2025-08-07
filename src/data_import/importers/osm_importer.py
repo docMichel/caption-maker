@@ -26,34 +26,30 @@ class OSMImporter:
         }
         
         country_name = country_names.get(country_code, country_code)
-        
-        # Requête Overpass pour récupérer les POIs importants
-        query = f"""
-        [out:json][timeout:60];
-        area["ISO3166-1"="{country_code}"]["admin_level"="2"];
-        (
-          // Sites touristiques
-          node["tourism"~"attraction|museum|monument|viewpoint|gallery|zoo"](area);
-          way["tourism"~"attraction|museum|monument|viewpoint|gallery|zoo"](area);
-          
-          // Sites historiques
-          node["historic"](area);
-          way["historic"](area);
-          
-          // Sites naturels remarquables
-          node["natural"~"peak|volcano|beach|bay|cape|waterfall"](area);
-          way["natural"~"peak|volcano|beach|bay|cape|waterfall"](area);
-          
-          // Lieux de culte importants
-          node["amenity"~"place_of_worship"]["religion"](area);
-          way["amenity"~"place_of_worship"]["religion"](area);
-          
-          // Châteaux et palais
-          node["historic"~"castle|palace"](area);
-          way["historic"~"castle|palace"](area);
-        );
-        out center;
+        if country_code in ['NC', 'PF', 'WF']:
+            query = f"""
+            [out:json][timeout:90];
+            area["ISO3166-1"="{country_code}"];
+            (
+            node["name"](area);
+            way["name"](area);
+            );
+            out center 100;
         """
+        else:
+
+        # Requête Overpass pour récupérer les POIs importants
+            query = f"""
+            [out:json][timeout:60];
+            area["ISO3166-1"="{country_code}"]["admin_level"="2"];
+            (
+            node["tourism"](area);
+            way["tourism"](area);
+            node["historic"](area);
+            way["historic"](area);
+            );
+            out center;
+            """
         
         try:
             # Exécuter la requête
