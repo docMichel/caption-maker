@@ -338,6 +338,11 @@ class GeoService:
     
     def _search_all_geonames(self, lat: float, lon: float, radius_km: float) -> List[Dict]:
         """Récupérer TOUTES les données GeoNames dans le rayon"""
+        """Version optimisée avec pré-filtrage par bbox"""
+    # Calculer une bounding box approximative
+        lat_delta = radius_km / 111.0  # ~111km par degré de latitude
+        lon_delta = radius_km / (111.0 * abs(cos(radians(lat))))
+        
         query = """
             SELECT 
                 geonameid as id,
@@ -348,24 +353,30 @@ class GeoService:
                 feature_class,
                 feature_code,
                 country_code,
-                cc2,
-                admin1_code,
-                admin2_code,
                 population,
-                elevation,
-                timezone,
                 haversine_distance(%s, %s, latitude, longitude) as distance_km
             FROM geonames 
-            WHERE haversine_distance(%s, %s, latitude, longitude) <= %s
+            WHERE 
+                -- Pré-filtrage par bounding box (utilise les index)
+                latitude BETWEEN %s AND %s
+                AND longitude BETWEEN %s AND %s
+                -- Puis filtrage précis
+                AND haversine_distance(%s, %s, latitude, longitude) <= %s
             ORDER BY 
                 CASE 
-                    WHEN feature_class = 'P' THEN population * 1000 / (distance_km + 1)
+                    WHEN feature_class = 'P' THEN population / (distance_km + 1)
                     ELSE 1 / (distance_km + 0.1)
                 END DESC
             LIMIT 100
         """
         
-        self.cursor.execute(query, (lat, lon, lat, lon, radius_km))
+        self.cursor.execute(query, (
+            lat, lon,  # pour haversine
+            lat - lat_delta, lat + lat_delta,  # bbox latitude
+            lon - lon_delta, lon + lon_delta,  # bbox longitude
+            lat, lon, radius_km  # pour haversine final
+        ))
+
         results = self.cursor.fetchall()
         
         # Enrichir chaque résultat
