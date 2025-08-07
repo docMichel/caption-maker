@@ -168,7 +168,14 @@ class GeoService:
                 return cached_data
         
         logger.info(f"🌍 Géolocalisation pour {latitude:.4f},{longitude:.4f} (rayon {radius_km}km)")
-        
+        try:
+            from ..data_import import ImportManager
+            import_manager = ImportManager(self.db_config)
+            country_code = import_manager.ensure_data_for_location(latitude, longitude)
+            logger.info(f"📍 Pays détecté: {country_code}")
+        except Exception as e:
+            logger.warning(f"⚠️ Import automatique échoué: {e}")
+
         # Initialiser la structure de résultat
         location = GeoLocation(
             latitude=latitude,
