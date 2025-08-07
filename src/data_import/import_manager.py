@@ -63,6 +63,42 @@ class ImportManager:
     
     def _import_country_data(self, country_code: str):
         """Importer toutes les données pour un pays"""
+        logger.info(f"🌍 Import des données pour {country_code}")
+        logger.info(f"   Importers disponibles: {list(self.importers.keys())}")
+        
+        stats = {}
+        
+        # 1. GeoNames
+        if 'geonames' in self.importers:
+            try:
+                logger.info(f"   Lancement import GeoNames...")
+                stats['cities'] = self.importers['geonames'].import_country(country_code)
+                logger.info(f"   ✅ {stats['cities']} lieux importés depuis GeoNames")
+            except Exception as e:
+                logger.error(f"   ❌ Erreur import GeoNames: {e}")
+                import traceback
+                traceback.print_exc()
+                stats['cities'] = 0
+        else:
+            logger.warning("   ⚠️ GeoNamesImporter non disponible")
+        
+        # 2. UNESCO
+        if 'unesco' in self.importers:
+            try:
+                logger.info(f"   Lancement import UNESCO...")
+                stats['unesco'] = self.importers['unesco'].import_country(country_code)
+                logger.info(f"   ✅ {stats['unesco']} sites UNESCO importés")
+            except Exception as e:
+                logger.error(f"   ❌ Erreur import UNESCO: {e}")
+                stats['unesco'] = 0
+        else:
+            logger.warning("   ⚠️ UNESCOImporter non disponible")
+        
+        # 3. Enregistrer l'import
+        logger.info(f"   Enregistrement import: {stats}")
+        self._record_import(country_code, stats)
+    def X_import_country_data(self, country_code: str):
+        """Importer toutes les données pour un pays"""
         stats = {}
         
         # 1. GeoNames
