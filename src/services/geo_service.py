@@ -20,12 +20,13 @@ import hashlib
 logger = logging.getLogger(__name__)
 
 
-# IMPORT CORRECT
 try:
     import sys
-    from pathlib import Path
-    # Ajouter src au path
-    sys.path.append(str(Path(__file__).parent.parent))
+    import os
+    # Ajouter le répertoire src au path (parent du parent de ce fichier)
+    src_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if src_dir not in sys.path:
+        sys.path.insert(0, src_dir)
     
     from data_import import ImportManager
     IMPORT_MANAGER_AVAILABLE = True
@@ -33,9 +34,6 @@ try:
 except ImportError as e:
     IMPORT_MANAGER_AVAILABLE = False
     logger.warning(f"⚠️ ImportManager non disponible: {e}")
-
-
-
 
 @dataclass
 class GeoLocation:
