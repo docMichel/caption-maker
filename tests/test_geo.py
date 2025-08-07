@@ -1,14 +1,12 @@
-    # test_geo.py
 #!/usr/bin/env python3
 
 import sys
 import os
-# AJOUTER CES LIGNES AU DÉBUT
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from services.geo_service import GeoService
-import logging
+# Ajouter le répertoire parent au path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# Maintenant importer depuis src
 from src.services.geo_service import GeoService
 import logging
 
@@ -26,6 +24,8 @@ db_config = {
 
 # Créer le service
 geo = GeoService(db_config)
+
+
 
 # Tester différentes coordonnées
 test_coords = [
