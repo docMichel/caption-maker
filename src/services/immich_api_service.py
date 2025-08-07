@@ -189,56 +189,39 @@ class ImmichAPIService:
             Données binaires de l'image ou None si erreur
         """
         try:
-            # D'après la doc Immich, on peut utiliser le paramètre format
-            # pour obtenir différentes tailles
-            endpoints = []
-            
+            # Endpoints corrects selon la documentation
             if size == "thumbnail":
-                endpoints = [
-                    f'/api/assets/{asset_id}/thumbnail',
-                    f'/api/asset/thumbnail/{asset_id}',
-                    f'/api/assets/{asset_id}/thumbnail?format=JPEG&size=400'
-                ]
+                # Utiliser le paramètre size=thumbnail
+                url = f"{self.proxy_url}/api/assets/{asset_id}/thumbnail?size=thumbnail"
             elif size == "preview":
                 # Preview est idéal pour l'analyse IA : bon compromis qualité/taille
-                endpoints = [
-                    f'/api/assets/{asset_id}/thumbnail?format=JPEG&size=1440',
-                    f'/api/assets/{asset_id}/preview',
-                    f'/api/asset/preview/{asset_id}'
-                ]
+                url = f"{self.proxy_url}/api/assets/{asset_id}/thumbnail?size=preview"
             else:  # original
-                endpoints = [
-                    f'/api/assets/{asset_id}/original',
-                    f'/api/asset/file/{asset_id}',
-                    f'/api/assets/{asset_id}/download'
-                ]
+                # Pour l'image originale complète
+                url = f"{self.proxy_url}/api/assets/{asset_id}/original"
             
-            for endpoint in endpoints:
-                try:
-                    response = requests.get(
-                        f"{self.proxy_url}{endpoint}",
-                        headers=self.headers,
-                        timeout=self.timeout,
-                        stream=True
-                    )
-                    
-                    if response.status_code == 200:
-                        # Lire le contenu binaire
-                        image_data = response.content
-                        logger.debug(f"✅ Image téléchargée ({size}): {asset_id} ({len(image_data)} bytes)")
-                        return image_data
-                        
-                except Exception as e:
-                    logger.debug(f"Endpoint {endpoint} échoué: {e}")
-                    continue
+            logger.debug(f"📥 Téléchargement image {size}: {url}")
             
-            logger.warning(f"⚠️ Impossible de télécharger l'image {asset_id} en taille {size}")
-            return None
+            response = requests.get(
+                url,
+                headers=self.headers,
+                timeout=self.timeout,
+                stream=True
+            )
+            
+            if response.status_code == 200:
+                # Lire le contenu binaire
+                image_data = response.content
+                logger.info(f"✅ Image téléchargée ({size}): {asset_id} ({len(image_data):,} bytes)")
+                return image_data
+            else:
+                logger.warning(f"⚠️ Erreur HTTP {response.status_code} pour {url}")
+                return None
             
         except Exception as e:
             logger.error(f"❌ Erreur téléchargement image {asset_id}: {e}")
-        return None 
-    
+            return None
+
     def get_asset_metadata(self, asset_id: str) -> Optional[Dict[str, Any]]:
         """
         Récupérer les métadonnées d'un asset
