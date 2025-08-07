@@ -17,7 +17,40 @@ from datetime import datetime, timedelta
 import json
 import hashlib
 
+
+# DEBUG IMPORT
+import sys
+import os
+print(f"🔍 DEBUG Import dans geo_service.py")
+print(f"   __file__ = {__file__}")
+print(f"   cwd = {os.getcwd()}")
+print(f"   sys.path[0] = {sys.path[0]}")
+print(f"   Parent dir = {os.path.dirname(os.path.dirname(__file__))}")
+
+# Ajouter le parent au path si nécessaire
+parent_dir = os.path.dirname(os.path.dirname(__file__))
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
+    print(f"   ✅ Ajouté au path: {parent_dir}")
+
+# Vérifier que data_import existe
+data_import_path = os.path.join(parent_dir, 'data_import')
+print(f"   data_import existe? {os.path.exists(data_import_path)}")
+print(f"   Contenu: {os.listdir(data_import_path) if os.path.exists(data_import_path) else 'N/A'}")
+
 logger = logging.getLogger(__name__)
+
+
+try:
+    from data_import import ImportManager
+    IMPORT_MANAGER_AVAILABLE = True
+    logger.warning("   ✅ Import réussi!")
+
+except ImportError:
+    IMPORT_MANAGER_AVAILABLE = False
+    logger = logging.getLogger(__name__)
+    logger.warning("⚠️ ImportManager non disponible")
+
 
 @dataclass
 class GeoLocation:
@@ -168,15 +201,14 @@ class GeoService:
                 return cached_data
         
         logger.info(f"🌍 Géolocalisation pour {latitude:.4f},{longitude:.4f} (rayon {radius_km}km)")
-        try:   
-            from src.data_import import ImportManager
-            import_manager = ImportManager(self.db_config)
-            country_code = import_manager.ensure_data_for_location(latitude, longitude)
-            logger.info(f"📍 Pays détecté: {country_code}")
-        except ImportError:
-            logger.warning("⚠️ Module data_import non trouvé")
-        except Exception as e:
-            logger.warning(f"⚠️ Import automatique échoué: {e}")
+        if IMPORT_MANAGER_AVAILABLE:
+            try:
+                import_manager = ImportManager(self.db_config)
+                country_code = import_manager.ensure_data_for_location(latitude, longitude)
+                logger.info(f"📍 Pays détecté: {country_code}")
+            except Exception as e:
+                logger.warning(f"⚠️ Import automatique échoué: {e}")
+
 
 
         # Initialiser la structure de résultat
