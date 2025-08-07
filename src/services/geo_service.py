@@ -6,24 +6,9 @@ GeoService - Service de géolocalisation intelligent
 Utilise les données MySQL importées + fallback APIs externes
 Optimisé pour génération de légendes contextuelles
 """
-import sys
-import os
 
-# Forcer le bon chemin
-_current_dir = os.path.dirname(os.path.abspath(__file__))
-_src_dir = os.path.dirname(_current_dir)
-_root_dir = os.path.dirname(_src_dir)
-
-# Ajouter dans l'ordre : root puis src
-if _root_dir not in sys.path:
-    sys.path.insert(0, _root_dir)
-if _src_dir not in sys.path:
-    sys.path.insert(0, _src_dir)
-
-# Maintenant les imports normaux
 import mysql.connector
 import requests
-
 import time
 import logging
 from typing import Dict, List, Optional, Tuple, Any
@@ -32,15 +17,25 @@ from datetime import datetime, timedelta
 import json
 import hashlib
 
+logger = logging.getLogger(__name__)
+
+# Import de ImportManager
 try:
-    from data_import import ImportManager
+    import sys
+    import os
+    # Ajouter src au path si nécessaire
+    src_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if src_dir not in sys.path:
+        sys.path.insert(0, src_dir)
+    
+    # Import direct depuis le fichier
+    from data_import.import_manager import ImportManager
     IMPORT_MANAGER_AVAILABLE = True
-    print(f"✅ ImportManager chargé depuis {_src_dir}")
+    logger.info("✅ ImportManager chargé")
 except ImportError as e:
     IMPORT_MANAGER_AVAILABLE = False
-    print(f"❌ ImportManager non disponible: {e}")
-    print(f"   sys.path: {sys.path[:3]}")
-
+    logger.warning(f"⚠️ ImportManager non disponible: {e}")
+    
 logger = logging.getLogger(__name__)
 
 
