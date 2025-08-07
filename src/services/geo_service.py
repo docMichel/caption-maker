@@ -17,28 +17,29 @@ from datetime import datetime, timedelta
 import json
 import hashlib
 
+logger = logging.getLogger(__name__)
+
 
 # DEBUG IMPORT
 import sys
 import os
-print(f"🔍 DEBUG Import dans geo_service.py")
-print(f"   __file__ = {__file__}")
-print(f"   cwd = {os.getcwd()}")
-print(f"   sys.path[0] = {sys.path[0]}")
-print(f"   Parent dir = {os.path.dirname(os.path.dirname(__file__))}")
+logger.info(f"🔍 DEBUG Import dans geo_service.py")
+logger.info(f"   __file__ = {__file__}")
+logger.info(f"   cwd = {os.getcwd()}")
+logger.info(f"   sys.path[0] = {sys.path[0]}")
+logger.info(f"   Parent dir = {os.path.dirname(os.path.dirname(__file__))}")
 
 # Ajouter le parent au path si nécessaire
 parent_dir = os.path.dirname(os.path.dirname(__file__))
 if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
-    print(f"   ✅ Ajouté au path: {parent_dir}")
+    logger.info(f"   ✅ Ajouté au path: {parent_dir}")
 
 # Vérifier que data_import existe
 data_import_path = os.path.join(parent_dir, 'data_import')
-print(f"   data_import existe? {os.path.exists(data_import_path)}")
-print(f"   Contenu: {os.listdir(data_import_path) if os.path.exists(data_import_path) else 'N/A'}")
+logger.info(f"   data_import existe? {os.path.exists(data_import_path)}")
+logger.info(f"   Contenu: {os.listdir(data_import_path) if os.path.exists(data_import_path) else 'N/A'}")
 
-logger = logging.getLogger(__name__)
 
 
 try:
@@ -774,8 +775,8 @@ if __name__ == "__main__":
         (13.7563, 100.5018, "Bangkok - Mégapole thaïlandaise")
     ]
     
-    print("🧪 Tests du GeoService")
-    print("=" * 50)
+    logger.info("🧪 Tests du GeoService")
+    logger.info("=" * 50)
     
     for lat, lon, description in test_locations:
         print(f"\n🌍 Test: {description}")
