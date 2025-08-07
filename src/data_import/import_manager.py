@@ -15,14 +15,13 @@ class ImportManager:
             from .importers.unesco_importer import UNESCOImporter
             from .importers.cultural_importer  import CulturalImporter
 
-            # from .importers.osm_importer import OSMImporter  # Si pas encore créé
+            from .importers.osm_importer import OSMImporter  # Si pas encore créé
             
             self.importers = {
                 'geonames': GeoNamesImporter(db_config),
                 'unesco': UNESCOImporter(db_config),
-                'cultural': CulturalImporter(db_config)  # AJOUTER
-
-                # 'osm': OSMImporter(db_config)
+                'cultural': CulturalImporter(db_config),
+                'osm': OSMImporter(db_config)
             }
         except ImportError as e:
             logger.warning(f"Importers non disponibles: {e}")
