@@ -6,9 +6,24 @@ GeoService - Service de géolocalisation intelligent
 Utilise les données MySQL importées + fallback APIs externes
 Optimisé pour génération de légendes contextuelles
 """
+import sys
+import os
 
+# Forcer le bon chemin
+_current_dir = os.path.dirname(os.path.abspath(__file__))
+_src_dir = os.path.dirname(_current_dir)
+_root_dir = os.path.dirname(_src_dir)
+
+# Ajouter dans l'ordre : root puis src
+if _root_dir not in sys.path:
+    sys.path.insert(0, _root_dir)
+if _src_dir not in sys.path:
+    sys.path.insert(0, _src_dir)
+
+# Maintenant les imports normaux
 import mysql.connector
 import requests
+
 import time
 import logging
 from typing import Dict, List, Optional, Tuple, Any
@@ -17,23 +32,17 @@ from datetime import datetime, timedelta
 import json
 import hashlib
 
-logger = logging.getLogger(__name__)
-
-
 try:
-    import sys
-    import os
-    # Ajouter le répertoire src au path (parent du parent de ce fichier)
-    src_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    if src_dir not in sys.path:
-        sys.path.insert(0, src_dir)
-    
     from data_import import ImportManager
     IMPORT_MANAGER_AVAILABLE = True
-    logger.info("✅ ImportManager chargé")
+    print(f"✅ ImportManager chargé depuis {_src_dir}")
 except ImportError as e:
     IMPORT_MANAGER_AVAILABLE = False
-    logger.warning(f"⚠️ ImportManager non disponible: {e}")
+    print(f"❌ ImportManager non disponible: {e}")
+    print(f"   sys.path: {sys.path[:3]}")
+
+logger = logging.getLogger(__name__)
+
 
 @dataclass
 class GeoLocation:
