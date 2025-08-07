@@ -54,7 +54,7 @@ class GeoNamesImporter:
                     
                     data = []
                     for row in reader:
-                        if len(row) >= 15:  # S'assurer qu'on a assez de colonnes
+                        if len(row) >= 19:  # S'assurer qu'on a toutes les colonnes
                             data.append({
                                 'geonameid': int(row[0]),
                                 'name': row[1],
@@ -65,11 +65,16 @@ class GeoNamesImporter:
                                 'feature_class': row[6],
                                 'feature_code': row[7],
                                 'country_code': row[8],
+                                'cc2': row[9],
                                 'admin1_code': row[10],
                                 'admin2_code': row[11],
+                                'admin3_code': row[12],
+                                'admin4_code': row[13],
                                 'population': int(row[14]) if row[14] else 0,
-                                'elevation': int(row[15]) if row[15] else None,
-                                'timezone': row[17] if len(row) > 17 else None
+                                'elevation': int(row[15]) if row[15] and row[15].strip() else None,
+                                'dem': int(row[16]) if row[16] and row[16].strip() else None,
+                                'timezone': row[17] if len(row) > 17 else None,
+                                'modification_date': row[18] if len(row) > 18 else None
                             })
                     
                     logger.info(f"   {len(data)} entrées lues")
@@ -88,38 +93,49 @@ class GeoNamesImporter:
         cursor = conn.cursor()
         
         try:
-            # Créer la table si elle n'existe pas
+            # Créer la table si elle n'existe pas avec TOUS les champs corrects
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS geonames (
-                    id INT PRIMARY KEY,
+                    geonameid INT PRIMARY KEY,
                     name VARCHAR(200) NOT NULL,
-                    ascii_name VARCHAR(200) NOT NULL,
+                    asciiname VARCHAR(200),
+                    alternatenames TEXT,
                     latitude DECIMAL(10, 7) NOT NULL,
                     longitude DECIMAL(10, 7) NOT NULL,
-                    feature_class CHAR(1) NOT NULL,
-                    feature_code VARCHAR(10) NOT NULL,
-                    country_code CHAR(2) NOT NULL,
+                    feature_class CHAR(1),
+                    feature_code VARCHAR(10),
+                    country_code CHAR(2),
+                    cc2 VARCHAR(200),
                     admin1_code VARCHAR(20),
-                    admin2_code VARCHAR(20),
-                    population INT DEFAULT 0,
-                    elevation INT DEFAULT NULL,
+                    admin2_code VARCHAR(80),
+                    admin3_code VARCHAR(20),
+                    admin4_code VARCHAR(20),
+                    population BIGINT DEFAULT 0,
+                    elevation INT,
+                    dem INT,
                     timezone VARCHAR(40),
+                    modification_date DATE,
+                    
                     INDEX idx_coords (latitude, longitude),
                     INDEX idx_country (country_code),
-                    INDEX idx_feature (feature_class, feature_code)
+                    INDEX idx_feature (feature_class, feature_code),
+                    INDEX idx_population (population DESC),
+                    INDEX idx_name (name)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             """)
             
-            # Préparer l'insertion
+            # Préparer l'insertion avec TOUS les champs
             insert_query = """
                 INSERT INTO geonames 
-                (id, name, ascii_name, latitude, longitude, feature_class, 
-                 feature_code, country_code, admin1_code, admin2_code, 
-                 population, elevation, timezone)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                (geonameid, name, asciiname, alternatenames, latitude, longitude, 
+                 feature_class, feature_code, country_code, cc2, admin1_code, 
+                 admin2_code, admin3_code, admin4_code, population, elevation, 
+                 dem, timezone, modification_date)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON DUPLICATE KEY UPDATE
                     name = VALUES(name),
-                    population = VALUES(population)
+                    population = VALUES(population),
+                    modification_date = VALUES(modification_date)
             """
             
             # Insérer par batch
@@ -128,25 +144,54 @@ class GeoNamesImporter:
             
             for i in range(0, len(data), batch_size):
                 batch = data[i:i + batch_size]
-                values = [
-                    (d['geonameid'], d['name'], d['asciiname'], 
-                     d['latitude'], d['longitude'], d['feature_class'],
-                     d['feature_code'], d['country_code'], d['admin1_code'],
-                     d['admin2_code'], d['population'], d['elevation'], 
-                     d['timezone'])
-                    for d in batch
-                ]
+                values = []
+                
+                for d in batch:
+                    # Gérer la date de modification
+                    mod_date = None
+                    if d.get('modification_date'):
+                        try:
+                            mod_date = d['modification_date']
+                        except:
+                            mod_date = None
+                    
+                    values.append((
+                        d['geonameid'], 
+                        d['name'], 
+                        d['asciiname'],
+                        d['alternatenames'][:65535] if d['alternatenames'] else None,  # Limiter TEXT
+                        d['latitude'], 
+                        d['longitude'], 
+                        d['feature_class'],
+                        d['feature_code'], 
+                        d['country_code'], 
+                        d['cc2'],
+                        d['admin1_code'],
+                        d['admin2_code'], 
+                        d['admin3_code'],
+                        d['admin4_code'],
+                        d['population'], 
+                        d['elevation'],
+                        d['dem'],
+                        d['timezone'],
+                        mod_date
+                    ))
                 
                 cursor.executemany(insert_query, values)
                 total_inserted += cursor.rowcount
                 
-                if (i + batch_size) % 10000 == 0:
+                if (i + batch_size) % 1000 == 0:
                     logger.info(f"   Progression: {i + batch_size}/{len(data)}")
                     conn.commit()
             
             conn.commit()
-            return total_inserted
+            logger.info(f"   ✅ Import terminé: {total_inserted} entrées")
+            return len(data)  # Retourner le nombre total d'entrées traitées
             
+        except Exception as e:
+            logger.error(f"   ❌ Erreur DB: {e}")
+            conn.rollback()
+            raise
         finally:
             cursor.close()
             conn.close()
