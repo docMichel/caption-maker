@@ -28,6 +28,8 @@ class ImportManager:
 
     def ensure_data_for_location(self, lat: float, lon: float) -> str:
         """S'assurer que les données sont disponibles pour cette localisation"""
+        logger.info(f"📍 ensure_data_for_location({lat}, {lon})")
+
         # 1. Détecter le pays
         country_code = self.country_detector.detect_country(lat, lon)
         if not country_code:
@@ -35,11 +37,14 @@ class ImportManager:
             return "NC"
         
         # 2. Vérifier si déjà importé
-        if not self._is_country_imported(country_code):
-            logger.info(f"🌍 Import des données pour {country_code}")
+        is_imported = self._is_country_imported(country_code)
+        logger.info(f"   Déjà importé? {is_imported}")
+        
+        if not is_imported:
+            logger.info(f"   🌍 Lancement import des données pour {country_code}")
             self._import_country_data(country_code)
         else:
-            logger.debug(f"✅ Données déjà importées pour {country_code}")
+            logger.info(f"   ✅ Données déjà importées pour {country_code}")
             
         return country_code
     

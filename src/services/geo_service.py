@@ -36,7 +36,7 @@ except ImportError as e:
     IMPORT_MANAGER_AVAILABLE = False
     logger.warning(f"⚠️ ImportManager non disponible: {e}")
     
-logger = logging.getLogger(__name__)
+
 
 
 @dataclass
@@ -194,7 +194,9 @@ class GeoService:
                 country_code = import_manager.ensure_data_for_location(latitude, longitude)
                 logger.info(f"📍 Pays détecté: {country_code}")
             except Exception as e:
-                logger.warning(f"⚠️ Import automatique échoué: {e}")
+                logger.error(f"⚠️ Import automatique échoué: {e}")
+                import traceback
+                traceback.print_exc()
 
 
 
