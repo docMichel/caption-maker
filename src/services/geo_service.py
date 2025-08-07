@@ -20,37 +20,21 @@ import hashlib
 logger = logging.getLogger(__name__)
 
 
-# DEBUG IMPORT
-import sys
-import os
-logger.info(f"🔍 DEBUG Import dans geo_service.py")
-logger.info(f"   __file__ = {__file__}")
-logger.info(f"   cwd = {os.getcwd()}")
-logger.info(f"   sys.path[0] = {sys.path[0]}")
-logger.info(f"   Parent dir = {os.path.dirname(os.path.dirname(__file__))}")
-
-# Ajouter le parent au path si nécessaire
-parent_dir = os.path.dirname(os.path.dirname(__file__))
-if parent_dir not in sys.path:
-    sys.path.insert(0, parent_dir)
-    logger.info(f"   ✅ Ajouté au path: {parent_dir}")
-
-# Vérifier que data_import existe
-data_import_path = os.path.join(parent_dir, 'data_import')
-logger.info(f"   data_import existe? {os.path.exists(data_import_path)}")
-logger.info(f"   Contenu: {os.listdir(data_import_path) if os.path.exists(data_import_path) else 'N/A'}")
-
-
-
+# IMPORT CORRECT
 try:
+    import sys
+    from pathlib import Path
+    # Ajouter src au path
+    sys.path.append(str(Path(__file__).parent.parent))
+    
     from data_import import ImportManager
     IMPORT_MANAGER_AVAILABLE = True
-    logger.warning("   ✅ Import réussi!")
-
-except ImportError:
+    logger.info("✅ ImportManager chargé")
+except ImportError as e:
     IMPORT_MANAGER_AVAILABLE = False
-    logger = logging.getLogger(__name__)
-    logger.warning("⚠️ ImportManager non disponible")
+    logger.warning(f"⚠️ ImportManager non disponible: {e}")
+
+
 
 
 @dataclass
