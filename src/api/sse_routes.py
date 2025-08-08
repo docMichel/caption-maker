@@ -87,69 +87,254 @@ def generate_caption_stream(request_id):
 
 
 @sse_bp.route('/ai/generate-caption-async', methods=['POST'])
-def generate_caption_async():
-    """
-    Endpoint pour démarrer une génération asynchrone avec SSE
-    
-    Body JSON:
-    {
-        "request_id": "unique-id",
-        "asset_id": "uuid-immich", 
-        "image_base64": "data:image/jpeg;base64,/9j/4AAQ...",
-        "latitude": 48.8566,
-        "longitude": 2.3522,
-        "existing_caption": "Ancienne légende...",
-        "language": "français",
-        "style": "creative"
-    }
-    """
-    try:
-        data = request.get_json()
-        if not data:
-            return jsonify({
-                'success': False,
-                'error': 'Corps JSON requis',
-                'code': 'INVALID_JSON'
-            }), 400
+def process_generation_async(request_id: str, data: Dict[str, Any], app):
+    """Fonction de traitement en arrière-plan pour génération asynchrone"""
+    with app.app_context():
+        # Imports absolus dans le contexte
+        import sys
+        import os
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         
-        request_id = data.get('request_id')
-        if not request_id:
-            return jsonify({
-                'success': False,
-                'error': 'request_id requis pour SSE',
-                'code': 'MISSING_REQUEST_ID'
-            }), 400
+        from utils.sse_manager import get_sse_manager
+        from utils.image_utils import get_image_processor
+        import asyncio
+        import time
         
-        # Valider les autres paramètres
-        validation_error = validate_async_params(data)
-        if validation_error:
-            return validation_error
+        sse_manager = get_sse_manager()
         
-        # Récupérer l'app pour le contexte
-        app = current_app._get_current_object()
-        
-        # Démarrer le traitement en arrière-plan
-        thread = threading.Thread(
-            target=process_generation_async,
-            args=(request_id, data, app),
-            daemon=True
-        )
-        thread.start()
-        
-        return jsonify({
-            'success': True,
-            'request_id': request_id,
-            'message': 'Génération démarrée, connectez-vous au flux SSE',
-            'sse_url': f'/api/ai/generate-caption-stream/{request_id}'
-        })
-        
-    except Exception as e:
-        logger.error(f"❌ Erreur démarrage génération async: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e),
-            'code': 'ASYNC_START_ERROR'
-        }), 500
+        try:
+            logger.info(f"🎨 Démarrage génération async pour {request_id}")
+            
+            # Extraire les paramètres
+            asset_id = data['asset_id']
+            language = data.get('language', 'français')
+            style = data.get('style', 'creative')
+            latitude = data.get('latitude')
+            longitude = data.get('longitude')
+            if latitude is not None:
+                latitude = float(latitude)
+            if longitude is not None:
+                longitude = float(longitude)
+
+            # Récupérer les services
+            services = app.config.get('SERVICES', {})
+            ai_service = services.get('ai_service')
+            geo_service = services.get('geo_service')
+            immich_service = services.get('immich_service')
+
+            if not ai_service or not geo_service:
+                error_msg = "Services IA ou Geo non disponibles"
+                logger.error(f"❌ {error_msg}")
+                sse_manager.broadcast_error(request_id, error_msg, "SERVICE_ERROR")
+                return
+            
+            # Étape 1: Préparation de l'image
+            sse_manager.broadcast_progress(request_id, 'preparation', 5, 'Préparation de l\'image...')
+            
+            # Gérer image depuis base64 OU depuis immich_asset
+            image_base64 = data.get('image_base64')
+            
+            if not image_base64 and immich_service:
+                # Récupérer l'image depuis Immich
+                logger.info(f"📥 Téléchargement de l'image depuis Immich pour {asset_id}")
+                sse_manager.broadcast_progress(request_id, 'preparation', 8, 'Téléchargement depuis Immich...')
+                
+                try:
+                    # Télécharger l'image binaire
+                    image_data = immich_service.download_asset_image(asset_id)
+                    
+                    if image_data:
+                        # Encoder en base64
+                        import base64
+                        image_base64 = base64.b64encode(image_data).decode('utf-8')
+                        # Ajouter le préfixe data URL
+                        image_base64 = f"data:image/jpeg;base64,{image_base64}"
+                        logger.info(f"✅ Image téléchargée depuis Immich ({len(image_data)} bytes)")
+                    else:
+                        error_msg = f"Impossible de télécharger l'image {asset_id} depuis Immich"
+                        logger.error(f"❌ {error_msg}")
+                        sse_manager.broadcast_error(request_id, error_msg, "DOWNLOAD_ERROR")
+                        return
+                        
+                except Exception as e:
+                    logger.error(f"❌ Erreur téléchargement Immich: {e}")
+                    sse_manager.broadcast_error(request_id, f"Erreur téléchargement image: {str(e)}", "DOWNLOAD_ERROR")
+                    return
+            
+            elif not image_base64:
+                # Ni base64 ni service Immich disponible
+                error_msg = "Image requise: soit image_base64, soit service Immich configuré"
+                logger.error(f"❌ {error_msg}")
+                sse_manager.broadcast_error(request_id, error_msg, "MISSING_IMAGE")
+                return
+
+            # Sauvegarder l'image temporairement
+            image_processor = get_image_processor()
+            temp_image_path = image_processor.save_base64_image(image_base64, asset_id)
+            
+            if not temp_image_path:
+                sse_manager.broadcast_error(request_id, 'Erreur traitement image', "IMAGE_PROCESSING_ERROR")
+                return
+            
+            sse_manager.broadcast_progress(request_id, 'preparation', 10, 'Image préparée')
+            
+            # Créer un callback pour les événements SSE
+            async def sse_callback(event_type, *args):
+                """Callback pour envoyer les events SSE depuis AIService"""
+                if event_type == 'progress':
+                    progress, message = args
+                    step = 'processing'  # Par défaut
+                    
+                    # Déterminer l'étape depuis le message
+                    if 'image' in message.lower():
+                        step = 'image_analysis'
+                    elif 'géo' in message.lower():
+                        step = 'geolocation'
+                    elif 'travel llama' in message.lower():
+                        step = 'travel_enrichment'
+                    elif 'culturel' in message.lower():
+                        step = 'cultural_enrichment'
+                    elif 'légende' in message.lower():
+                        step = 'caption_generation'
+                    elif 'hashtag' in message.lower():
+                        step = 'hashtag_generation'
+                        
+                    sse_manager.broadcast_progress(request_id, step, progress, message)
+                    
+                elif event_type == 'result':
+                    result_data = args[0]
+                    step = result_data.get('step')
+                    result = result_data.get('result', {})
+                    
+                    # Convertir en format partial selon l'étape
+                    if step == 'image_analysis':
+                        sse_manager.broadcast_partial(request_id, 'image_analysis', {
+                            'description': result.get('description', ''),
+                            'confidence': result.get('confidence', 0),
+                            'model': 'llava:7b'
+                        })
+                        
+                    elif step == 'geolocation':
+                        sse_manager.broadcast_partial(request_id, 'geolocation', {
+                            'location': result.get('location_basic', ''),
+                            'coordinates': [latitude, longitude] if latitude and longitude else [],
+                            'confidence': result.get('confidence', 0),
+                            'nearby_places': [],
+                            'cultural_sites': []
+                        })
+                        
+                    elif step == 'cultural_enrichment':
+                        sse_manager.broadcast_partial(request_id, 'cultural_enrichment', {
+                            'text': result.get('enrichment', ''),
+                            'source': 'geo_enrichment'
+                        })
+                        
+                    elif step == 'travel_enrichment':
+                        sse_manager.broadcast_partial(request_id, 'travel_enrichment', {
+                            'text': result.get('enrichment', ''),
+                            'source': 'travel_llama',
+                            'model': 'llama3.1:70b'
+                        })
+                        
+                    elif step == 'raw_caption':
+                        sse_manager.broadcast_partial(request_id, 'raw_caption', {
+                            'caption': result.get('caption', ''),
+                            'language': language,
+                            'style': style
+                        })
+                        
+                elif event_type == 'warning':
+                    message = args[0] if args else "Avertissement"
+                    # Déterminer le code selon le message
+                    code = 'MODEL_FALLBACK' if 'llama' in message.lower() else 'WARNING'
+                    sse_manager.broadcast_warning(request_id, message, code)
+                    
+                elif event_type == 'error':
+                    error = args[0] if args else "Erreur inconnue"
+                    sse_manager.broadcast_error(request_id, str(error), "GENERATION_ERROR")
+                    
+                elif event_type == 'complete':
+                    # Ne rien faire ici, on gère après
+                    pass
+            
+            try:
+                # Créer une boucle d'événements pour l'async
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                
+                # Utiliser la nouvelle méthode modulaire async
+                result = loop.run_until_complete(
+                    ai_service.generate_caption_async(
+                        image_path=str(temp_image_path),
+                        latitude=latitude,
+                        longitude=longitude,
+                        language=language,
+                        style=style,
+                        include_hashtags=data.get('include_hashtags', True),
+                        callback=sse_callback
+                    )
+                )
+                
+                # Envoyer les hashtags si générés
+                if result.hashtags and len(result.hashtags) > 0:
+                    sse_manager.broadcast_partial(request_id, 'hashtags', {
+                        'tags': result.hashtags,
+                        'count': len(result.hashtags)
+                    })
+                
+                # Préparer le résultat final selon notre format
+                final_result = {
+                    'success': True,
+                    'caption': result.caption,
+                    'hashtags': result.hashtags,
+                    'confidence_score': result.confidence_score,
+                    'language': result.language,
+                    'style': result.style,
+                    'processing_time': result.generation_time_seconds,
+                    'metadata': {
+                        'request_id': request_id,
+                        'asset_id': asset_id,
+                        'timestamp': datetime.now().isoformat(),
+                        'models_used': {
+                            'vision': 'llava:7b',
+                            'cultural': 'qwen2:7b',
+                            'travel': 'llama3.1:70b',
+                            'caption': 'mistral:7b-instruct'
+                        }
+                    }
+                }
+                
+                # Si des erreurs mais quand même un résultat
+                if result.error_messages:
+                    for warning in result.error_messages:
+                        sse_manager.broadcast_warning(request_id, warning)
+                
+                # Envoyer le résultat final
+                sse_manager.broadcast_complete(request_id, final_result)
+                logger.info(f"✅ Génération async terminée pour {request_id} en {result.generation_time_seconds:.1f}s")
+                
+            finally:
+                # Nettoyer la boucle d'événements
+                loop.close()
+                
+                # Nettoyer fichier temporaire
+                try:
+                    import os
+                    if temp_image_path and os.path.exists(temp_image_path):
+                        os.unlink(temp_image_path)
+                except Exception as e:
+                    logger.warning(f"Impossible de supprimer l'image temporaire: {e}")
+                    
+        except TimeoutError as e:
+            import traceback
+            logger.error(f"⏱️ Timeout génération async: {e}")
+            sse_manager.broadcast_error(request_id, f"Timeout: {str(e)}", "TIMEOUT")
+            
+        except Exception as e:
+            import traceback
+            logger.error(f"❌ Erreur génération async: {e}")
+            logger.error(f"Traceback complet:\n{traceback.format_exc()}")
+            sse_manager.broadcast_error(request_id, str(e), "UNKNOWN_ERROR")
 
 
 @sse_bp.route('/ai/regenerate-final', methods=['POST'])
