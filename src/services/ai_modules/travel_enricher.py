@@ -85,6 +85,8 @@ class TravelEnricher:
     async def enrich(self, image_description: str, geo_context: Dict[str, str], 
                      callback=None) -> Optional[str]:
         """Enrichir avec des infos touristiques Travel Llama"""
+        response = None  # AJOUTER CETTE LIGNE
+
         try:
             # Déterminer le modèle à utiliser
             model = self._get_travel_model()
