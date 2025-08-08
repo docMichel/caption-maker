@@ -92,10 +92,25 @@ class AIService:
             # 2. Contexte géographique
             geo_context = {}
             if latitude and longitude:
+                if callback:
+                    await callback('progress', 35, 'Géolocalisation en cours...')
+    
                 geo_location = self.geo_service.get_location_info(latitude, longitude)
                 geo_context = self.geo_service.get_location_summary_for_ai(geo_location)
                 intermediate_results['geo_context'] = geo_context
                 processing_steps.append("✅ Contexte géographique")
+
+                if callback:
+                    await callback('partial', {
+                        'type': 'geolocation',
+                        'content': {
+                            'location': geo_context.get('location_basic', ''),
+                            'coordinates': [latitude, longitude],
+                            'confidence': geo_location.confidence_score,
+                            'nearby_places': [],
+                            'cultural_sites': []
+                        }
+                    })
             else:
                 processing_steps.append("⚠️ Pas de géolocalisation")
             
