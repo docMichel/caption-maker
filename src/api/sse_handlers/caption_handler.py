@@ -199,7 +199,7 @@ class CaptionGenerationHandler:
             models_used={
                 'vision': 'llava:7b',
                 'cultural': 'qwen2:7b',
-                'travel': 'llama3.1:70b',
+                'travel': 'llama3.2:3b',
                 'caption': 'mistral:7b-instruct'
             }
         )

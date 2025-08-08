@@ -63,7 +63,7 @@ class TravelEnricher:
             return self.travel_model
             
         # Modèles à tester dans l'ordre
-        primary_model = self.models.get('travel_llama', 'llama3.1:70b')
+        primary_model = self.models.get('travel_llama', 'llama3.2:3b')
         fallback_model = self.models.get('travel_llama_fallback', 'mistral:7b-instruct')
         
         # Tester le modèle principal

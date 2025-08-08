@@ -11,8 +11,8 @@ models:
   vision: "llava:7b"
   caption: "mistral:7b-instruct" 
   geo_enrichment: "qwen2:7b"
-  travel_llama: "llama3.1:70b"  #  modèle pour enrichissement voyage
-  travel_llama_fallback: "mistral:7b-instruct"  # Fallback
+  travel_llama: "llama3.2:3b" #"llama3.1:70b"  #  modèle pour enrichissement voyage
+  travel_llama_fallback: "qwen2:7b"  # Fallback
 
 
 ollama:

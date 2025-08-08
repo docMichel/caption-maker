@@ -162,7 +162,7 @@ def main():
     
     # 3. Modèles à tester
     travel_models = [
-        "llama3.1:70b",      # Modèle principal
+        "llama3.2:3b",      # Modèle principal
         "llama3.1:8b",       # Version plus légère
         "llama3.1:latest",   # Version par défaut
         "mistral:7b-instruct" # Fallback
@@ -196,7 +196,7 @@ def main():
         print("\n⚠️ Aucun modèle Travel Llama trouvé")
         print("\n💡 Pour installer llama3.1, exécutez:")
         print("   ollama pull llama3.1:8b    # Version légère (4.9GB)")
-        print("   ollama pull llama3.1:70b   # Version complète (40GB)")
+        print("   ollama pull llama3.2:3b   # Version complète (40GB)")
         
         # Proposer le téléchargement
         response = input("\nVoulez-vous télécharger llama3.1:8b maintenant? (o/n): ")
