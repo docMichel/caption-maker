@@ -8,7 +8,10 @@ Gère les connexions, messages et broadcasting
 
 import json
 import queue
+from queue import Queue, Empty
 import logging
+import threading  # AJOUTER CET IMPORT !
+
 import time
 from typing import Dict, Any, Optional
 from datetime import datetime
