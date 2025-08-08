@@ -12,6 +12,7 @@ models:
   caption: "mistral:7b-instruct" 
   geo_enrichment: "qwen2:7b"
   travel_llama: "llama3.1:70b"  # Nouveau modèle pour enrichissement voyage
+  travel_llama_fallback: "mistral:7b-instruct"  # Fallback
 
 
 ollama:
@@ -52,6 +53,18 @@ hashtags_generation:
 # =============================================================================
 
 travel_enrichment:
+  fallback_prompt: |
+    Enrichis cette description avec des infos touristiques.
+    Lieu: {location_basic}
+    
+    Ajoute 2-3 faits intéressants sur:
+    - Histoire ou culture locale
+    - Attractions touristiques
+    - Spécialités régionales
+    
+    Style: Guide touristique enthousiaste
+    Max 80 mots.
+
   main_prompt: |
     Tu es Travel Llama, un expert passionné de voyage et de culture locale.
     Enrichis cette description avec des informations touristiques captivantes.

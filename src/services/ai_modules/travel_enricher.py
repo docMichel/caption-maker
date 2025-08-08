@@ -14,12 +14,34 @@ class TravelEnricher:
         self.client = ollama_client
         self.config = config
         self.models = models
-        
+        self._check_available_model()
+
+    def _check_available_model(self):
+        """Vérifier quel modèle Travel est disponible"""
+        try:
+            # Tester si le modèle principal existe
+            response = self.client.generate_text(
+                model=self.models.get('travel_llama', 'llama3.1:70b'),
+                prompt="Test",
+                max_tokens=10
+            )
+            if response:
+                self.travel_model = self.models.get('travel_llama')
+                logger.info(f"✅ Travel Llama principal disponible: {self.travel_model}")
+            else:
+                raise Exception("Modèle principal non disponible")
+        except:
+            # Utiliser le fallback
+            self.travel_model = self.models.get('travel_llama_fallback', 'mistral:7b-instruct')
+            logger.warning(f"⚠️ Utilisation du fallback Travel: {self.travel_model}")
+    
+
     async def enrich(self, image_description: str, geo_context: Dict[str, str], 
                      callback=None) -> Optional[str]:
         """Enrichir avec des infos touristiques Travel Llama"""
         try:
             if callback:
+                model_info = f"Travel Llama ({self.travel_model})"
                 await callback('progress', 50, "Enrichissement Travel Llama...")
             
             # Vérifier si le modèle est configuré
@@ -45,7 +67,7 @@ class TravelEnricher:
             
             # Appeler le modèle
             response = self.client.generate_text(
-                model=self.models.get('travel_llama', 'llama3.1:70b'),
+                model=self.travel_model,  # Utilise le bon modèle
                 prompt=formatted_prompt,
                 temperature=params.get('temperature', 0.8),
                 max_tokens=params.get('max_tokens', 200)
