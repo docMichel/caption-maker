@@ -139,6 +139,18 @@ class AIConfig:
             'top_p': 0.8
         })
     
+    def get_hashtag_prompt(self) -> str:
+        """Récupérer le prompt pour génération de hashtags"""
+        return self._config.get('hashtags_generation', {}).get('prompt', '')
+    
+    def get_hashtag_params(self) -> Dict[str, Any]:
+        """Récupérer les paramètres pour hashtags"""
+        return self._config.get('hashtags_generation', {}).get('parameters', {
+            'temperature': 0.6,
+            'max_tokens': 50
+        })
+
+    
     # =================================================================
     # UTILITAIRES LANGUE ET STYLE
     # =================================================================

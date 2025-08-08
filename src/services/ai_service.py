@@ -116,13 +116,17 @@ class AIService:
             
             # 4. Préparer le contexte final
             caption_context = {
-                'image_description': image_result['description'],
-                'location_basic': geo_context.get('location_basic', ''),
-                'cultural_context': geo_context.get('cultural_context', ''),
-                'nearby_attractions': geo_context.get('nearby_attractions', ''),
-                'travel_enrichment': travel_enrichment or '',
-                'geographic_context': geo_context.get('geographic_context', '')
-            }
+                    'image_description': image_result.get('description', ''),
+                    'location_basic': geo_context.get('location_basic', ''),
+                    'cultural_context': geo_context.get('cultural_context', ''),
+                    'nearby_attractions': geo_context.get('nearby_attractions', ''),
+                    'travel_enrichment': travel_enrichment or '',
+                    'cultural_enrichment': geo_context.get('cultural_enrichment', ''),  # Si présent
+                    'geographic_context': geo_context.get('geographic_context', '')
+                }
+
+            # S'assurer qu'aucune valeur n'est None
+            caption_context = {k: v or '' for k, v in caption_context.items()}
             
             # 5. Générer la légende
             caption = await self.caption_generator.generate(
