@@ -122,8 +122,14 @@ class TravelEnricher:
                 image_description=image_description
             )
             
-            logger.debug(f"📝 Prompt Travel Llama ({len(formatted_prompt)} chars)")
-            
+            # AJOUTER CE LOG
+            if self.config.get_debug_config().get('log_prompts', False):
+                logger.info(f"📝 PROMPT Travel Llama ({model}):\n{formatted_prompt[:300]}...")
+
+            # AJOUTER CE LOG POUR LA RÉPONSE
+            if response and self.config.get_debug_config().get('log_responses', False):
+                logger.info(f"📝 RÉPONSE Travel Llama:\n{response[:200]}...")
+                        
             # Appeler le modèle
             response = self.client.generate_text(
                 model=model,

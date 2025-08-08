@@ -241,26 +241,35 @@ class SSEManager:
                          style: str,
                          processing_time: float,
                          asset_id: Optional[str] = None,
-                         models_used: Optional[Dict[str, str]] = None):
-        """Envoyer le résultat final complet"""
-        return self.send_event(connection_id, {
-            'event': 'complete',
-            'data': {
-                'success': success,
-                'caption': caption,
-                'hashtags': hashtags,
-                'confidence_score': confidence_score,
-                'language': language,
-                'style': style,
-                'processing_time': processing_time,
-                'metadata': {
-                    'request_id': connection_id,
-                    'asset_id': asset_id,
-                    'timestamp': datetime.utcnow().isoformat() + 'Z',
-                    'models_used': models_used or {}
+                         models_used: Optional[Dict[str, str]] = None,
+                        enrichments: Optional[Dict[str, Any]] = None):  # AJOUTER
+
+            data = {
+                    'success': success,
+                    'caption': caption,
+                    'hashtags': hashtags,
+                    'confidence_score': confidence_score,
+                    'language': language,
+                    'style': style,
+                    'processing_time': processing_time,
+                    'metadata': {
+                        'request_id': connection_id,
+                        'asset_id': asset_id,
+                        'timestamp': datetime.utcnow().isoformat() + 'Z',
+                        'models_used': models_used or {}
+                    }
                 }
-            }
-        })
+                
+                # AJOUTER LES ENRICHISSEMENTS
+            if enrichments:
+                    data['enrichments'] = enrichments
+
+            """Envoyer le résultat final complet"""
+            return self.send_event(connection_id, {
+                'event': 'complete',
+                'data': data
+            })
+    
     
     # ========== MÉTHODES LEGACY (pour compatibilité) ==========
     

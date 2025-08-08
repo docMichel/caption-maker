@@ -28,6 +28,9 @@ class CaptionGenerator:
             # Formatter avec toutes les données
             formatted_prompt = prompt_template.format(**context)
             
+            if self.config.get_debug_config().get('log_prompts', False):
+                logger.info(f"📝 PROMPT Caption ({language}/{style}):\n{formatted_prompt[:300]}...")
+
             # Générer
             caption = self.client.generate_text(
                 model=self.models['caption'],

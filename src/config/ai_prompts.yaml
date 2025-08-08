@@ -414,3 +414,10 @@ supported_styles:
     
   - name: "minimal"
     description: "Court et percutant"
+
+# À la fin du fichier
+debug:
+  log_prompts: true  # Changer à true
+  log_responses: true  # Changer à true
+  save_failed_generations: true
+  detailed_timing: true

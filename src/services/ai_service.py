@@ -107,13 +107,25 @@ class AIService:
                             'location': geo_context.get('location_basic', ''),
                             'coordinates': [latitude, longitude],
                             'confidence': geo_location.confidence_score,
-                            'nearby_places': [],
-                            'cultural_sites': []
+                            'nearby_places': [poi['name'] for poi in geo_location.nearby_pois[:5]],
+                            'cultural_sites': [site['name'] for site in geo_location.cultural_sites[:3]],
+                            'address': geo_location.formatted_address,
+                            'city': geo_location.city,
+                            'country': geo_location.country,
+                            'data_sources': geo_location.data_sources,
+                            'stats': {
+                                'cities': len(geo_location.major_cities),
+                                'unesco': len(geo_location.unesco_sites),
+                                'cultural': len(geo_location.cultural_sites),
+                                'pois': len(geo_location.nearby_pois),
+                                'osm': len(geo_location.osm_pois)
+                            }
                         }
                     })
+
             else:
                 processing_steps.append("⚠️ Pas de géolocalisation")
-            
+                
             # 3. Travel Llama (optionnel)
             travel_enrichment = None
             if geo_context and geo_context.get('location_basic'):

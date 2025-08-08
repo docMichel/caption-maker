@@ -185,6 +185,8 @@ class CaptionGenerationHandler:
                 'count': len(result.hashtags)
             })
         
+        intermediate = result.intermediate_results
+
         # Préparer et envoyer le résultat complet
         sse_manager.broadcast_complete(
             request_id,
@@ -197,12 +199,20 @@ class CaptionGenerationHandler:
             processing_time=result.generation_time_seconds,
             asset_id=asset_id,
             models_used={
-                'vision': 'llava:7b',
+                'vision': intermediate.get('image_analysis', {}).get('model_used', 'llava:7b'),
                 'cultural': 'qwen2:7b',
-                'travel': 'llama3.2:3b',
+                'travel': intermediate.get('travel_model', 'llama3.2:3b'),
                 'caption': 'mistral:7b-instruct'
+            },
+            # AJOUTER CES ENRICHISSEMENTS
+            enrichments={
+                'geo_context': intermediate.get('geo_context', {}),
+                'travel_enrichment': intermediate.get('travel_enrichment', ''),
+                'image_analysis': intermediate.get('image_analysis', {}),
+                'cultural_enrichment': intermediate.get('cultural_enrichment', '')
             }
         )
+
     
     def _determine_step(self, message: str) -> str:
         """Déterminer l'étape depuis le message"""

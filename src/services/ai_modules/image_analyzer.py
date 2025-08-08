@@ -32,6 +32,9 @@ class ImageAnalyzer:
             with open(image_path, 'rb') as f:
                 image_base64 = base64.b64encode(f.read()).decode('utf-8')
             
+            if self.config.get_debug_config().get('log_prompts', False):
+                logger.info(f"📝 PROMPT LLaVA:\n{prompt[:200]}...")
+
             # Préparer la requête
             payload = {
                 'model': self.models['vision'],
