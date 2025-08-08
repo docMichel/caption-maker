@@ -11,12 +11,77 @@ models:
   vision: "llava:7b"
   caption: "mistral:7b-instruct" 
   geo_enrichment: "qwen2:7b"
+  travel_llama: "llama3.1:70b"  # Nouveau modèle pour enrichissement voyage
+
 
 ollama:
   base_url: "http://localhost:11434"
   timeout: 60
   default_temperature: 0.7
   max_retries: 3
+
+# =============================================================================
+# TEMPLATES DE PROMPTS - hashtags
+# =============================================================================
+
+hashtags_generation:
+  prompt: |
+    Génère 5 à 8 hashtags Instagram pertinents pour cette photo.
+
+    📸 IMAGE: {image_description}
+    📍 LIEU: {location_basic}
+    🏛️ CONTEXTE: {cultural_context}
+    🌍 INFOS VOYAGE: {travel_enrichment}
+
+    RÈGLES:
+    - Mix de hashtags populaires et spécifiques
+    - Inclure le lieu et le pays
+    - Au moins 1 hashtag en langue locale
+    - Format: #mot (pas d'espaces)
+    - Pertinents pour Instagram travel
+
+    Retourne UNIQUEMENT les hashtags séparés par des espaces.
+
+  parameters:
+    temperature: 0.6
+    max_tokens: 50
+
+
+# =============================================================================
+# TEMPLATES DE PROMPTS - Travel Llama
+# =============================================================================
+
+travel_enrichment:
+  main_prompt: |
+    Tu es Travel Llama, un expert passionné de voyage et de culture locale.
+    Enrichis cette description avec des informations touristiques captivantes.
+
+    📍 LIEU: {location_basic}
+    🏛️ CONTEXTE ACTUEL: {cultural_context}
+    🌍 ATTRACTIONS PROCHES: {nearby_attractions}
+    📸 DESCRIPTION DE L'IMAGE: {image_description}
+
+    🎯 FOURNIS DES INFOS CAPTIVANTES SUR:
+    - Histoire fascinante et anecdotes méconnues du lieu
+    - Traditions locales authentiques et festivals
+    - Gastronomie et spécialités à ne pas manquer
+    - Légendes locales et mystères
+    - Meilleurs moments pour visiter
+    - Conseils d'initiés que seuls les locaux connaissent
+    - Expériences uniques à vivre sur place
+
+    ✅ STYLE:
+    - Passionné et inspirant, comme un ami qui partage ses coups de cœur
+    - Informatif mais jamais ennuyeux
+    - Maximum 150 mots
+    - Évite les clichés touristiques
+    - Donne envie de découvrir le lieu
+
+  parameters:
+    temperature: 0.8
+    max_tokens: 200
+    top_p: 0.9
+
 
 # =============================================================================
 # TEMPLATES DE PROMPTS - ANALYSE D'IMAGE
@@ -73,6 +138,9 @@ captions_french:
     - Attractions proches: {nearby_attractions}
     - Enrichissement: {cultural_enrichment}
 
+    🌍 INFOS TRAVEL LLAMA:
+      {travel_enrichment}
+      
     🎨 STYLE DEMANDÉ:
     - Émotionnel et évocateur, capture l'essence du moment
     - Authentique et personnel, pas de ton marketing
