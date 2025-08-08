@@ -61,8 +61,11 @@ class SSEManager:
     """Gestionnaire global des connexions SSE"""
     
     def __init__(self):
-        self.connections: Dict[str, SSEConnection] = {}
-        self.lock = Lock()
+        self.connections: Dict[str, Queue] = {}
+        self.lock = threading.Lock()
+        self.logger = logging.getLogger(__name__)
+        self.debug_sse = True  # Flag pour activer/désactiver le debug
+        
         self.stats = {
             'total_connections': 0,
             'active_connections': 0,
@@ -70,6 +73,48 @@ class SSEManager:
             'errors': 0
         }
     
+    def _debug_log_event(self, connection_id: str, event_type: str, data: Any):
+        """Logger les événements SSE pour debug (sauf heartbeat)"""
+        if not self.debug_sse or event_type == 'heartbeat':
+            return
+            
+        # Formater le message pour le debug
+        if isinstance(data, dict):
+            # Tronquer les longues valeurs pour la lisibilité
+            debug_data = {}
+            for k, v in data.items():
+                if isinstance(v, str) and len(v) > 100:
+                    debug_data[k] = f"{v[:100]}..."
+                elif isinstance(v, dict):
+                    debug_data[k] = f"<dict with {len(v)} keys>"
+                elif isinstance(v, list):
+                    debug_data[k] = f"<list with {len(v)} items>"
+                else:
+                    debug_data[k] = v
+        else:
+            debug_data = data
+            
+        self.logger.info(f"📤 SSE [{connection_id}] event='{event_type}' data={debug_data}")
+    
+    def send_event(self, connection_id: str, event_data: Dict[str, Any]) -> bool:
+        """Envoyer un événement à une connexion spécifique"""
+        with self.lock:
+            if connection_id in self.connections:
+                try:
+                    # Logger avant envoi
+                    event_type = event_data.get('event', 'message')
+                    self._debug_log_event(connection_id, event_type, event_data.get('data'))
+                    
+                    self.connections[connection_id].put(event_data)
+                    return True
+                except Exception as e:
+                    self.logger.error(f"❌ Erreur envoi SSE [{connection_id}]: {e}")
+                    return False
+            else:
+                self.logger.warning(f"⚠️ Connexion SSE non trouvée: {connection_id}")
+                return False
+    
+
     def create_connection(self, request_id: str, timeout: float = 1.0) -> SSEConnection:
         """Créer une nouvelle connexion SSE"""
         with self.lock:
@@ -100,33 +145,7 @@ class SSEManager:
                 self.stats['active_connections'] = len(self.connections)
                 logger.info(f"📡 Connexion SSE fermée: {request_id}")
     
-    def broadcast_progress(self, request_id: str, step: str, progress: int, 
-                          details: str = ""):
-        """Envoyer une mise à jour de progression"""
-        self._send_message(request_id, 'progress', {
-            'step': step,
-            'progress': progress,
-            'details': details
-        })
-    
-    def broadcast_result(self, request_id: str, step: str, result: Dict[str, Any]):
-        """Envoyer un résultat intermédiaire"""
-        self._send_message(request_id, 'result', {
-            'step': step,
-            'result': result
-        })
-    
-    def broadcast_error(self, request_id: str, error: str, code: str = "ERROR"):
-        """Envoyer une erreur"""
-        self._send_message(request_id, 'error', {
-            'error': error,
-            'code': code
-        })
-        self.stats['errors'] += 1
-    
-    def broadcast_complete(self, request_id: str, final_result: Dict[str, Any]):
-        """Envoyer le résultat final"""
-        self._send_message(request_id, 'complete', final_result)
+  
     
     def _send_message(self, request_id: str, event: str, data: Dict[str, Any]):
         """Méthode interne pour envoyer un message"""
@@ -142,6 +161,52 @@ class SSEManager:
         else:
             logger.warning(f"⚠️ Connexion SSE non trouvée: {request_id}")
     
+    
+    def broadcast_progress(self, connection_id: str, step: str, progress: int, message: str):
+        """Envoyer une mise à jour de progression"""
+        event_data = {
+            'event': 'progress',
+            'data': {
+                'step': step,
+                'progress': progress,
+                'message': message,
+                'timestamp': datetime.now().isoformat()
+            }
+        }
+        return self.send_event(connection_id, event_data)
+    
+    def broadcast_result(self, connection_id: str, step: str, result: Dict[str, Any]):
+        """Envoyer un résultat intermédiaire"""
+        event_data = {
+            'event': 'result',
+            'data': {
+                'step': step,
+                'result': result,
+                'timestamp': datetime.now().isoformat()
+            }
+        }
+        return self.send_event(connection_id, event_data)
+    
+    def broadcast_complete(self, connection_id: str, data: Dict[str, Any]):
+        """Envoyer le résultat final"""
+        event_data = {
+            'event': 'complete',
+            'data': data
+        }
+        return self.send_event(connection_id, event_data)
+    
+    def broadcast_error(self, connection_id: str, error: str, error_type: str = "ERROR"):
+        """Envoyer une erreur"""
+        event_data = {
+            'event': 'error',
+            'data': {
+                'error': error,
+                'error_type': error_type,
+                'timestamp': datetime.now().isoformat()
+            }
+        }
+        return self.send_event(connection_id, event_data)
+
     def cleanup_inactive_connections(self, max_inactive_seconds: int = 300):
         """Nettoyer les connexions inactives"""
         with self.lock:

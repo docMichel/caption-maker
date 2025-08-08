@@ -3,6 +3,8 @@
 """Module Travel Llama pour enrichissement touristique"""
 
 import logging
+import requests  # AJOUTER CET IMPORT !
+
 from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
@@ -83,9 +85,10 @@ class TravelEnricher:
                 return None
             
             # Récupérer le prompt
-            prompt_template = self.config.prompts_config.get('travel_enrichment', {}).get('main_prompt', '')
-            params = self.config.prompts_config.get('travel_enrichment', {}).get('parameters', {})
-            
+            config_data = self.config._config if hasattr(self.config, '_config') else {}
+            prompt_template = config_data.get('travel_enrichment', {}).get('main_prompt', '')
+            params = config_data.get('travel_enrichment', {}).get('parameters', {})
+                
             if not prompt_template:
                 logger.warning("Pas de prompt Travel Llama")
                 return None
