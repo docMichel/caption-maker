@@ -10,12 +10,10 @@ import json
 import queue
 from queue import Queue, Empty
 import logging
-import threading  # AJOUTER CET IMPORT !
-
+import threading
 import time
 from typing import Dict, Any, Optional
 from datetime import datetime
-from threading import Lock
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +23,7 @@ class SSEConnection:
     
     def __init__(self, request_id: str, timeout: float = 1.0):
         self.request_id = request_id
-        self.message_queue = queue.Queue()
+        self.message_queue = Queue()
         self.timeout = timeout
         self.created_at = time.time()
         self.last_activity = time.time()
@@ -46,7 +44,7 @@ class SSEConnection:
         """Récupérer un message de la queue"""
         try:
             return self.message_queue.get(timeout=timeout or self.timeout)
-        except queue.Empty:
+        except Empty:
             return None
     
     def close(self):
@@ -56,7 +54,7 @@ class SSEConnection:
         while not self.message_queue.empty():
             try:
                 self.message_queue.get_nowait()
-            except queue.Empty:
+            except Empty:
                 break
 
 
@@ -64,10 +62,11 @@ class SSEManager:
     """Gestionnaire global des connexions SSE"""
     
     def __init__(self):
-        self.connections: Dict[str, Queue] = {}
+        # Stockage des connexions SSEConnection
+        self.connections: Dict[str, SSEConnection] = {}
         self.lock = threading.Lock()
         self.logger = logging.getLogger(__name__)
-        self.debug_sse = True  # Flag pour activer/désactiver le debug
+        self.debug_sse = True
         
         self.stats = {
             'total_connections': 0,
@@ -83,7 +82,6 @@ class SSEManager:
             
         # Formater le message pour le debug
         if isinstance(data, dict):
-            # Tronquer les longues valeurs pour la lisibilité
             debug_data = {}
             for k, v in data.items():
                 if isinstance(v, str) and len(v) > 100:
@@ -99,25 +97,6 @@ class SSEManager:
             
         self.logger.info(f"📤 SSE [{connection_id}] event='{event_type}' data={debug_data}")
     
-    def send_event(self, connection_id: str, event_data: Dict[str, Any]) -> bool:
-        """Envoyer un événement à une connexion spécifique"""
-        with self.lock:
-            if connection_id in self.connections:
-                try:
-                    # Logger avant envoi
-                    event_type = event_data.get('event', 'message')
-                    self._debug_log_event(connection_id, event_type, event_data.get('data'))
-                    
-                    self.connections[connection_id].put(event_data)
-                    return True
-                except Exception as e:
-                    self.logger.error(f"❌ Erreur envoi SSE [{connection_id}]: {e}")
-                    return False
-            else:
-                self.logger.warning(f"⚠️ Connexion SSE non trouvée: {connection_id}")
-                return False
-    
-
     def create_connection(self, request_id: str, timeout: float = 1.0) -> SSEConnection:
         """Créer une nouvelle connexion SSE"""
         with self.lock:
@@ -137,7 +116,8 @@ class SSEManager:
     
     def get_connection(self, request_id: str) -> Optional[SSEConnection]:
         """Récupérer une connexion existante"""
-        return self.connections.get(request_id)
+        with self.lock:
+            return self.connections.get(request_id)
     
     def close_connection(self, request_id: str):
         """Fermer et supprimer une connexion"""
@@ -148,68 +128,91 @@ class SSEManager:
                 self.stats['active_connections'] = len(self.connections)
                 logger.info(f"📡 Connexion SSE fermée: {request_id}")
     
-  
-    
-    def _send_message(self, request_id: str, event: str, data: Dict[str, Any]):
-        """Méthode interne pour envoyer un message"""
-        connection = self.get_connection(request_id)
-        if connection:
-            try:
-                connection.send_message(event, data)
-                self.stats['messages_sent'] += 1
-                logger.debug(f"📨 Message SSE envoyé: {event} → {request_id}")
-            except Exception as e:
-                logger.error(f"❌ Erreur envoi SSE: {e}")
-                self.stats['errors'] += 1
-        else:
-            logger.warning(f"⚠️ Connexion SSE non trouvée: {request_id}")
-    
+    def send_event(self, connection_id: str, event_data: Dict[str, Any]) -> bool:
+        """
+        Envoyer un événement à une connexion spécifique
+        
+        Format attendu de event_data:
+        {
+            'event': 'progress',  # Type d'événement
+            'data': {...}         # Données de l'événement
+        }
+        """
+        with self.lock:
+            connection = self.connections.get(connection_id)
+            if connection:
+                try:
+                    event_type = event_data.get('event', 'message')
+                    data = event_data.get('data', {})
+                    
+                    # Debug log
+                    self._debug_log_event(connection_id, event_type, data)
+                    
+                    # Envoyer via SSEConnection
+                    connection.send_message(event_type, data)
+                    self.stats['messages_sent'] += 1
+                    return True
+                    
+                except Exception as e:
+                    self.logger.error(f"❌ Erreur envoi SSE [{connection_id}]: {e}")
+                    self.stats['errors'] += 1
+                    return False
+            else:
+                self.logger.warning(f"⚠️ Connexion SSE non trouvée: {connection_id}")
+                return False
     
     def broadcast_progress(self, connection_id: str, step: str, progress: int, message: str):
         """Envoyer une mise à jour de progression"""
-        event_data = {
+        return self.send_event(connection_id, {
             'event': 'progress',
             'data': {
                 'step': step,
                 'progress': progress,
-                'message': message,
-                'timestamp': datetime.now().isoformat()
+                'message': message
             }
-        }
-        return self.send_event(connection_id, event_data)
+        })
     
     def broadcast_result(self, connection_id: str, step: str, result: Dict[str, Any]):
         """Envoyer un résultat intermédiaire"""
-        event_data = {
+        return self.send_event(connection_id, {
             'event': 'result',
             'data': {
                 'step': step,
-                'result': result,
-                'timestamp': datetime.now().isoformat()
+                'result': result
             }
-        }
-        return self.send_event(connection_id, event_data)
+        })
     
     def broadcast_complete(self, connection_id: str, data: Dict[str, Any]):
-        """Envoyer le résultat final"""
-        event_data = {
+        """
+        Envoyer le résultat final
+        
+        IMPORTANT: 'data' contient déjà toutes les données finales,
+        pas besoin de double-wrapper
+        """
+        return self.send_event(connection_id, {
             'event': 'complete',
-            'data': data
-        }
-        return self.send_event(connection_id, event_data)
+            'data': data  # Pas de double wrapping !
+        })
     
     def broadcast_error(self, connection_id: str, error: str, error_type: str = "ERROR"):
         """Envoyer une erreur"""
-        event_data = {
+        return self.send_event(connection_id, {
             'event': 'error',
             'data': {
                 'error': error,
-                'error_type': error_type,
-                'timestamp': datetime.now().isoformat()
+                'error_type': error_type
             }
-        }
-        return self.send_event(connection_id, event_data)
-
+        })
+    
+    def broadcast_warning(self, connection_id: str, message: str):
+        """Envoyer un avertissement"""
+        return self.send_event(connection_id, {
+            'event': 'warning',
+            'data': {
+                'message': message
+            }
+        })
+    
     def cleanup_inactive_connections(self, max_inactive_seconds: int = 300):
         """Nettoyer les connexions inactives"""
         with self.lock:
@@ -227,28 +230,36 @@ class SSEManager:
     
     def get_stats(self) -> Dict[str, Any]:
         """Récupérer les statistiques"""
-        return {
-            **self.stats,
-            'connections_details': {
-                request_id: {
-                    'created_at': datetime.fromtimestamp(conn.created_at).isoformat(),
-                    'last_activity': datetime.fromtimestamp(conn.last_activity).isoformat(),
-                    'queue_size': conn.message_queue.qsize(),
-                    'is_active': conn.is_active
+        with self.lock:
+            return {
+                **self.stats,
+                'connections_details': {
+                    request_id: {
+                        'created_at': datetime.fromtimestamp(conn.created_at).isoformat(),
+                        'last_activity': datetime.fromtimestamp(conn.last_activity).isoformat(),
+                        'queue_size': conn.message_queue.qsize(),
+                        'is_active': conn.is_active
+                    }
+                    for request_id, conn in self.connections.items()
                 }
-                for request_id, conn in self.connections.items()
             }
-        }
     
     def format_sse_response(self, message: Dict[str, Any]) -> str:
-        """Formater un message pour SSE"""
+        """
+        Formater un message pour SSE
+        
+        Format SSE standard:
+        event: <type>
+        data: <json>
+        
+        """
         event_type = message.get('event', 'message')
-        data = json.dumps(message)
+        data = message.get('data', {})
         
         # Format SSE standard
         lines = []
         lines.append(f"event: {event_type}")
-        lines.append(f"data: {data}")
+        lines.append(f"data: {json.dumps(data)}")
         lines.append("")  # Ligne vide pour séparer les messages
         
         return "\n".join(lines) + "\n"
