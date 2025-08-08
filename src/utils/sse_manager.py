@@ -12,7 +12,7 @@ from queue import Queue, Empty
 import logging
 import threading
 import time
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -161,6 +161,28 @@ class SSEManager:
                 self.logger.warning(f"⚠️ Connexion SSE non trouvée: {connection_id}")
                 return False
     
+    # ========== NOUVEAUX ÉVÉNEMENTS SELON LE FORMAT STANDARD ==========
+    
+    def broadcast_connected(self, connection_id: str):
+        """Envoyer l'événement de connexion établie"""
+        return self.send_event(connection_id, {
+            'event': 'connected',
+            'data': {
+                'message': 'Connexion SSE établie',
+                'request_id': connection_id,
+                'timestamp': datetime.utcnow().isoformat() + 'Z'
+            }
+        })
+    
+    def broadcast_heartbeat(self, connection_id: str):
+        """Envoyer un heartbeat"""
+        return self.send_event(connection_id, {
+            'event': 'heartbeat',
+            'data': {
+                'timestamp': int(datetime.utcnow().timestamp() * 1000)
+            }
+        })
+    
     def broadcast_progress(self, connection_id: str, step: str, progress: int, message: str):
         """Envoyer une mise à jour de progression"""
         return self.send_event(connection_id, {
@@ -168,50 +190,99 @@ class SSEManager:
             'data': {
                 'step': step,
                 'progress': progress,
-                'message': message
+                'message': message,
+                'timestamp': datetime.utcnow().isoformat() + 'Z'
             }
         })
     
-    def broadcast_result(self, connection_id: str, step: str, result: Dict[str, Any]):
-        """Envoyer un résultat intermédiaire"""
+    def broadcast_partial(self, connection_id: str, result_type: str, content: Dict[str, Any]):
+        """Envoyer un résultat partiel"""
         return self.send_event(connection_id, {
-            'event': 'result',
+            'event': 'partial',
             'data': {
-                'step': step,
-                'result': result
+                'type': result_type,
+                'content': content
             }
         })
     
-    def broadcast_complete(self, connection_id: str, data: Dict[str, Any]):
-        """
-        Envoyer le résultat final
-        
-        IMPORTANT: 'data' contient déjà toutes les données finales,
-        pas besoin de double-wrapper
-        """
-        return self.send_event(connection_id, {
-            'event': 'complete',
-            'data': data  # Pas de double wrapping !
-        })
-    
-    def broadcast_error(self, connection_id: str, error: str, error_type: str = "ERROR"):
-        """Envoyer une erreur"""
-        return self.send_event(connection_id, {
-            'event': 'error',
-            'data': {
-                'error': error,
-                'error_type': error_type
-            }
-        })
-    
-    def broadcast_warning(self, connection_id: str, message: str):
+    def broadcast_warning(self, connection_id: str, message: str, code: str = 'WARNING'):
         """Envoyer un avertissement"""
         return self.send_event(connection_id, {
             'event': 'warning',
             'data': {
-                'message': message
+                'message': message,
+                'code': code,
+                'timestamp': datetime.utcnow().isoformat() + 'Z'
             }
         })
+    
+    def broadcast_error(self, connection_id: str, error: str, error_type: str, step: str, details: Optional[str] = None):
+        """Envoyer une erreur"""
+        data = {
+            'error': error,
+            'error_type': error_type,
+            'step': step,
+            'timestamp': datetime.utcnow().isoformat() + 'Z'
+        }
+        if details:
+            data['details'] = details
+            
+        return self.send_event(connection_id, {
+            'event': 'error',
+            'data': data
+        })
+    
+    def broadcast_complete(self, connection_id: str, 
+                         success: bool,
+                         caption: str,
+                         hashtags: List[str],
+                         confidence_score: float,
+                         language: str,
+                         style: str,
+                         processing_time: float,
+                         asset_id: Optional[str] = None,
+                         models_used: Optional[Dict[str, str]] = None):
+        """Envoyer le résultat final complet"""
+        return self.send_event(connection_id, {
+            'event': 'complete',
+            'data': {
+                'success': success,
+                'caption': caption,
+                'hashtags': hashtags,
+                'confidence_score': confidence_score,
+                'language': language,
+                'style': style,
+                'processing_time': processing_time,
+                'metadata': {
+                    'request_id': connection_id,
+                    'asset_id': asset_id,
+                    'timestamp': datetime.utcnow().isoformat() + 'Z',
+                    'models_used': models_used or {}
+                }
+            }
+        })
+    
+    # ========== MÉTHODES LEGACY (pour compatibilité) ==========
+    
+    def broadcast_result(self, connection_id: str, step: str, result: Dict[str, Any]):
+        """
+        [DEPRECATED] Utiliser broadcast_partial() à la place
+        Conservé pour compatibilité
+        """
+        # Mapper vers le nouveau format
+        result_type_mapping = {
+            'image_analysis': 'image_analysis',
+            'geolocation': 'geolocation',
+            'cultural_enrichment': 'cultural_enrichment',
+            'travel_enrichment': 'travel_enrichment',
+            'caption_generation': 'raw_caption',
+            'hashtag_generation': 'hashtags'
+        }
+        
+        result_type = result_type_mapping.get(step, step)
+        return self.broadcast_partial(connection_id, result_type, result)
+    
+    # ========== MÉTHODES UTILITAIRES ==========
     
     def cleanup_inactive_connections(self, max_inactive_seconds: int = 300):
         """Nettoyer les connexions inactives"""
@@ -259,7 +330,7 @@ class SSEManager:
         # Format SSE standard
         lines = []
         lines.append(f"event: {event_type}")
-        lines.append(f"data: {json.dumps(data)}")
+        lines.append(f"data: {json.dumps(data, ensure_ascii=False)}")
         lines.append("")  # Ligne vide pour séparer les messages
         
         return "\n".join(lines) + "\n"
