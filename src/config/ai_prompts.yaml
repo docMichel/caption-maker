@@ -74,6 +74,9 @@ travel_enrichment:
     🌍 ATTRACTIONS PROCHES: {nearby_attractions}
     📸 DESCRIPTION DE L'IMAGE: {image_description}
 
+    ⚠️ IMPORTANT: Si le lieu est en Nouvelle-Calédonie, Polynésie française ou autre territoire d'outre-mer, 
+    NE PAS confondre avec la France métropolitaine. Ces territoires ont leur propre culture et histoire unique.
+
     🎯 FOURNIS DES INFOS CAPTIVANTES SUR:
     - Histoire fascinante et anecdotes méconnues du lieu
     - Traditions locales authentiques et festivals

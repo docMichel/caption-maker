@@ -871,10 +871,21 @@ class GeoService:
         # Localisation basique
         if location.city:
             summary['location_basic'] = f"{location.city}"
-            if location.country:
-                summary['location_basic'] += f", {location.country}"
-        else:
-            summary['location_basic'] = location.formatted_address
+            if location.country_code not in ['NC', 'PF', 'WF', 'GP', 'MQ', 'RE', 'YT', 'GF']:
+                if location.country:
+                    summary['location_basic'] += f", {location.country}"
+            else:
+                territory_names = {
+                    'NC': 'Nouvelle-Calédonie',
+                    'PF': 'Polynésie française',
+                    'WF': 'Wallis-et-Futuna',
+                    'GP': 'Guadeloupe',
+                    'MQ': 'Martinique',
+                    'RE': 'La Réunion',
+                    'YT': 'Mayotte',
+                    'GF': 'Guyane française'
+                }
+                summary['location_basic'] = location.formatted_address
         
         # Contexte culturel riche
         cultural_elements = []

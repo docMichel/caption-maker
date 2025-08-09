@@ -249,10 +249,13 @@ class CaptionGenerationHandler:
                 'location': result.get('location_basic', ''),
                 'coordinates': result.get('coordinates', []),
                 'confidence': result.get('confidence', 0),
-                'nearby_places': [],
-                'cultural_sites': []
+                'nearby_places': result.get('nearby_places', []),
+                'cultural_sites': result.get('cultural_sites', []),
+                'address': result.get('address', ''),  # AJOUTER
+                'city': result.get('city', ''),        # AJOUTER
+                'country': result.get('country', ''),   # AJOUTER
+                'stats': result.get('stats', {})       # AJOUTER
             })
-        # etc...
     
     def _download_from_immich(self, asset_id: str, immich_service, 
                             sse_manager, request_id: str) -> str:
